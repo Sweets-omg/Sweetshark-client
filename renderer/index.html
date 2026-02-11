@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sharkord Client</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Server Sidebar -->
+    <div class="sidebar">
+      <div class="server-list" id="serverList">
+        <!-- Add server button -->
+        <div class="server-icon add-server" id="addServerBtn" title="Add Server">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main content area (BrowserView will be overlayed here) -->
+    <div class="main-content">
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-content">
+          <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          <h1>Welcome to Sharkord Client</h1>
+          <p>Add a server to get started</p>
+          <button class="primary-button" onclick="openAddServerModal()">Add Server</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Server Modal -->
+  <div class="modal" id="addServerModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Sharkord Server</h2>
+        <button class="close-button" onclick="closeAddServerModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="serverName">Server Name</label>
+          <input type="text" id="serverName" placeholder="My Sharkord Server" />
+        </div>
+        <div class="form-group">
+          <label for="serverUrl">Server URL</label>
+          <input type="url" id="serverUrl" placeholder="http://localhost:4991" />
+          <small>Include http:// or https://</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary-button" onclick="closeAddServerModal()">Cancel</button>
+        <button class="primary-button" onclick="addServer()">Add Server</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu for servers -->
+  <div class="context-menu" id="contextMenu">
+    <div class="context-menu-item" onclick="removeServerFromMenu()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+      </svg>
+      Remove Server
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
