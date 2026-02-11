@@ -190,6 +190,33 @@ ipcMain.on('get-servers', (event) => {
   event.reply('servers-loaded', servers);
 });
 
+// Handlers to temporarily hide/show the BrowserView so modals in the main window can appear above it.
+ipcMain.on('hide-view', () => {
+  if (currentView && mainWindow) {
+    try {
+      mainWindow.removeBrowserView(currentView);
+    } catch (e) {
+      console.error('Error removing BrowserView:', e);
+    }
+  }
+});
+
+ipcMain.on('show-view', () => {
+  if (currentView && mainWindow) {
+    try {
+      mainWindow.addBrowserView(currentView);
+      // restore bounds - keep the view filling the right side (beside sidebar)
+      const [width, height] = mainWindow.getSize();
+      const sidebarWidth = 80; // matches CSS sidebar width
+      currentView.setBounds({ x: sidebarWidth, y: 0, width: width - sidebarWidth, height });
+      currentView.setAutoResize({ width: true, height: true });
+    } catch (e) {
+      console.error('Error adding BrowserView back:', e);
+    }
+  }
+});
+
+
 // Handle screen sharing sources request
 ipcMain.handle('get-sources', async () => {
   const sources = await desktopCapturer.getSources({

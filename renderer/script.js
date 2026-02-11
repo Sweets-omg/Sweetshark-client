@@ -151,6 +151,7 @@ function switchServer(serverId) {
 
 // Modal functions
 function openAddServerModal() {
+  try { window.electronAPI.hideView(); } catch(e){}
   document.getElementById('addServerModal').classList.add('active');
   document.getElementById('serverName').focus();
 }
@@ -180,6 +181,7 @@ function addServer() {
 
   window.electronAPI.addServer({ name, url });
   closeAddServerModal();
+  try { window.electronAPI.showView(); } catch(e){}
 }
 
 // Context menu functions
