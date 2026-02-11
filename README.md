@@ -2,9 +2,9 @@
 
 DISCLAIMER: THIS IS ALL MADE BY AI, I TAKE NO RESPONSIBILITY IF YOU DECIDE TO USE IT.
 
-USE AT YOUR OWN RISK.
+## USE AT YOUR OWN RISK.
 
-A multi-server Electron client for Sharkord with Discord-inspired UI.
+## A multi-server Electron client for Sharkord with Discord-inspired UI.
 
 ## Prerequisites
 
