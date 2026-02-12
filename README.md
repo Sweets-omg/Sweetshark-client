@@ -6,7 +6,7 @@
 
 ps. I didn't even read this readme, so I have no idea what's in it.
 
-A multi-server Electron client for Sharkord with Discord-inspired UI.
+# A multi-server Electron client for Sharkord with Discord-inspired UI.
 
 ## Features
 
