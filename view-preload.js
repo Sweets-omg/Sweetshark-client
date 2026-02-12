@@ -1,30 +1,24 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Security: Use contextBridge to safely expose IPC to the isolated context
-contextBridge.exposeInMainWorld('__electronScreenShare', {
-  getSources: (opts) => ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', opts)
-});
-
-// Inject screen sharing support with proper security isolation
+// Inject screen sharing support: show a simple picker UI inside the BrowserView page,
+// then obtain a stream using the selected source id via getUserMedia with chromeMediaSourceId.
 window.addEventListener('DOMContentLoaded', () => {
   if (!navigator.mediaDevices) return;
-  
-  const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia && 
-                                  navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+  const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia && navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
 
   navigator.mediaDevices.getDisplayMedia = async function(constraints) {
     try {
-      // Ask main process for sources via the secure bridge
-      const sources = await window.__electronScreenShare.getSources({ types: ['window', 'screen'] });
-      
+      // Ask main process for sources
+      const sources = await ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', { types: ['window', 'screen'] });
       if (!sources || sources.length === 0) {
-        // Fallback to original if available
+        // fallback to original
         if (originalGetDisplayMedia) return originalGetDisplayMedia(constraints);
         throw new Error('No screen sources available');
       }
 
-      // Build simple picker overlay
+      // Build simple picker overlay injected into the current page
       const overlayId = '__sharkord_screenshare_picker';
+      // Remove existing if any
       const existing = document.getElementById(overlayId);
       if (existing) existing.remove();
 
@@ -32,7 +26,7 @@ window.addEventListener('DOMContentLoaded', () => {
       overlay.id = overlayId;
       Object.assign(overlay.style, {
         position: 'fixed',
-        zIndex: '99999999',
+        zIndex: 99999999,
         inset: '0px',
         display: 'flex',
         alignItems: 'center',
@@ -57,11 +51,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
       const title = document.createElement('div');
       title.textContent = 'Choose a screen or window to share';
-      Object.assign(title.style, { 
-        fontSize: '18px', 
-        marginBottom: '8px',
-        fontWeight: '600'
-      });
+      Object.assign(title.style, { fontSize: '18px', marginBottom: '8px' });
 
       const grid = document.createElement('div');
       Object.assign(grid.style, {
@@ -70,21 +60,21 @@ window.addEventListener('DOMContentLoaded', () => {
         gap: '12px'
       });
 
-      // Track screenshot intervals and data
+      // Create items and store screenshot interval references
       let screenshotIntervals = [];
       let pickerClosed = false;
-      let lastScreenshots = new Map();
+      let lastScreenshots = new Map(); // Store references to clear old data
 
-      // Function to update screenshots
+      // Function to capture and update screenshots
       async function updateScreenshots() {
         if (pickerClosed) return;
         
         try {
-          const updatedSources = await window.__electronScreenShare.getSources({ 
+          const updatedSources = await ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', { 
             types: ['window', 'screen']
           });
           
-          // Clear old screenshots from memory
+          // Clear old screenshots from memory before updating
           lastScreenshots.clear();
           
           // Update thumbnails
@@ -93,8 +83,11 @@ window.addEventListener('DOMContentLoaded', () => {
             if (item) {
               const thumb = item.querySelector('div');
               if (thumb && src.thumbnail) {
+                // Clear old image data
                 thumb.style.backgroundImage = '';
+                // Set new image
                 thumb.style.backgroundImage = `url(${src.thumbnail})`;
+                // Store reference
                 lastScreenshots.set(src.id, src.thumbnail);
               }
             }
@@ -104,20 +97,23 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // Function to clean up
+      // Function to clean up screenshot intervals and data
       function cleanupScreenshots() {
         pickerClosed = true;
         screenshotIntervals.forEach(interval => clearInterval(interval));
         screenshotIntervals = [];
+        
+        // Clear all screenshot data from memory
         lastScreenshots.clear();
         
+        // Clear background images from DOM elements
         const thumbs = grid.querySelectorAll('div[style*="background-image"]');
         thumbs.forEach(thumb => {
           thumb.style.backgroundImage = '';
         });
       }
 
-      // Create picker items
+      // Use thumbnails if provided (source.thumbnail is a NativeImage in main, sent as dataURL)
       for (const src of sources) {
         const item = document.createElement('button');
         item.type = 'button';
@@ -131,29 +127,16 @@ window.addEventListener('DOMContentLoaded', () => {
           borderRadius: '6px',
           cursor: 'pointer',
           color: '#fff',
-          textAlign: 'left',
-          transition: 'all 0.2s'
-        });
-
-        item.addEventListener('mouseenter', () => {
-          item.style.background = '#333';
-          item.style.borderColor = 'rgba(255,255,255,0.15)';
-        });
-
-        item.addEventListener('mouseleave', () => {
-          item.style.background = '#222';
-          item.style.borderColor = 'rgba(255,255,255,0.05)';
+          textAlign: 'left'
         });
 
         const thumb = document.createElement('div');
-        Object.assign(thumb.style, {
-          height: '120px',
-          marginBottom: '8px',
-          background: '#333',
-          borderRadius: '4px',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
-        });
+        thumb.style.height = '120px';
+        thumb.style.marginBottom = '8px';
+        thumb.style.background = '#333';
+        thumb.style.borderRadius = '4px';
+        thumb.style.backgroundSize = 'cover';
+        thumb.style.backgroundPosition = 'center';
 
         if (src.thumbnail && typeof src.thumbnail === 'string') {
           thumb.style.backgroundImage = `url(${src.thumbnail})`;
@@ -161,24 +144,21 @@ window.addEventListener('DOMContentLoaded', () => {
 
         const name = document.createElement('div');
         name.textContent = src.name || src.title || ('Source ' + src.id);
-        Object.assign(name.style, {
-          fontSize: '13px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis'
-        });
+        name.style.fontSize = '13px';
+        name.style.whiteSpace = 'nowrap';
+        name.style.overflow = 'hidden';
+        name.style.textOverflow = 'ellipsis';
 
         item.appendChild(thumb);
         item.appendChild(name);
 
-        // Handle selection
         item.onclick = async (e) => {
           e.preventDefault();
           cleanupScreenshots();
+          // remove overlay
           overlay.remove();
-          
+          // Request stream for chosen source using chromeMediaSourceId constraint
           try {
-            // Request stream using chromeMediaSourceId
             const stream = await navigator.mediaDevices.getUserMedia({
               audio: false,
               video: {
@@ -190,21 +170,10 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
               }
             });
-            
-            // Resolve the promise with the stream
-            if (typeof item.__resolveStream === 'function') {
-              item.__resolveStream(stream);
-            }
-            
             return stream;
           } catch (err) {
             console.error('getUserMedia for desktop failed', err);
-            
-            if (typeof item.__rejectStream === 'function') {
-              item.__rejectStream(err);
-            }
-            
-            // Fallback to original if available
+            // Fallback to original getDisplayMedia if available
             if (originalGetDisplayMedia) return originalGetDisplayMedia(constraints);
             throw err;
           }
@@ -213,7 +182,7 @@ window.addEventListener('DOMContentLoaded', () => {
         grid.appendChild(item);
       }
 
-      // Start screenshot updates (every 5 seconds)
+      // Start screenshot update interval (every 5 seconds)
       const interval = setInterval(updateScreenshots, 5000);
       screenshotIntervals.push(interval);
 
@@ -226,28 +195,11 @@ window.addEventListener('DOMContentLoaded', () => {
         border: '1px solid rgba(255,255,255,0.06)',
         color: '#fff',
         borderRadius: '6px',
-        cursor: 'pointer',
-        transition: 'all 0.2s'
+        cursor: 'pointer'
       });
-
-      cancel.addEventListener('mouseenter', () => {
-        cancel.style.background = '#444';
-      });
-
-      cancel.addEventListener('mouseleave', () => {
-        cancel.style.background = '#333';
-      });
-
       cancel.onclick = () => { 
         cleanupScreenshots();
-        overlay.remove();
-        
-        // Reject all pending promises
-        Array.from(grid.children).forEach(item => {
-          if (typeof item.__rejectStream === 'function') {
-            item.__rejectStream(new Error('User cancelled screen share'));
-          }
-        });
+        overlay.remove(); 
       };
 
       card.appendChild(title);
@@ -256,25 +208,34 @@ window.addEventListener('DOMContentLoaded', () => {
       overlay.appendChild(card);
       document.documentElement.appendChild(overlay);
 
-      // Return a promise that resolves when user picks a source
+      // Return a Promise that resolves when the user picks an item.
       return new Promise((resolve, reject) => {
-        // Store resolve/reject on each item
-        Array.from(grid.children).forEach(item => {
-          item.__resolveStream = resolve;
-          item.__rejectStream = reject;
-        });
+        // We will monkey-patch each item's onclick to resolve the promise with the stream.
+        // But since the onclick above returns stream, we need to intercept when a stream is created.
+        // A simple approach: wrap navigator.mediaDevices.getUserMedia to catch the next call with chromeMediaSourceId.
+        const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = async function(constraints) {
+          // restore original
+          navigator.mediaDevices.getUserMedia = originalGetUserMedia;
+          try {
+            const s = await originalGetUserMedia(constraints);
+            resolve(s);
+            return s;
+          } catch (err) {
+            reject(err);
+            throw err;
+          }
+        };
         
         // Clean up if overlay is removed externally
         const observer = new MutationObserver((mutations) => {
           if (!document.contains(overlay)) {
             cleanupScreenshots();
             observer.disconnect();
-            reject(new Error('Picker overlay removed'));
           }
         });
         observer.observe(document.documentElement, { childList: true, subtree: true });
       });
-      
     } catch (error) {
       console.error('Screen sharing error in preload picker:', error);
       if (originalGetDisplayMedia) {

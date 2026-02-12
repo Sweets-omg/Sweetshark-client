@@ -1,40 +1,9 @@
 let servers = [];
 let activeServerId = null;
-let pendingServerId = null;
+let pendingServerId = null; // Holds server id for the currently open modal operation
 let draggedServerId = null;
-let serverIcons = new Map();
-let overlayActive = false;
-
-// Security: Constants
-const MAX_SERVER_NAME_LENGTH = 100;
-const MAX_ICON_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_URL_PROTOCOLS = ['http:', 'https:'];
-
-// Security: Validate URL
-function isValidUrl(urlString) {
-  try {
-    const url = new URL(urlString);
-    return ALLOWED_URL_PROTOCOLS.includes(url.protocol);
-  } catch (e) {
-    return false;
-  }
-}
-
-// Security: Validate server name
-function isValidServerName(name) {
-  if (typeof name !== 'string') return false;
-  if (name.length === 0 || name.length > MAX_SERVER_NAME_LENGTH) return false;
-  // Prevent path traversal attempts
-  if (name.includes('..') || name.includes('/') || name.includes('\\')) return false;
-  return true;
-}
-
-// Security: Sanitize HTML to prevent XSS
-function sanitizeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+let serverIcons = new Map(); // Cache for loaded custom icons
+let overlayActive = false; // Track if any modal/menu is open
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -51,13 +20,9 @@ function setupEventListeners() {
     // Load custom icons
     for (const server of servers) {
       if (server.icon && !serverIcons.has(server.id)) {
-        try {
-          const iconData = await window.electronAPI.loadIcon(server.icon);
-          if (iconData) {
-            serverIcons.set(server.id, iconData);
-          }
-        } catch (error) {
-          console.error('Failed to load icon:', error);
+        const iconData = await window.electronAPI.loadIcon(server.icon);
+        if (iconData) {
+          serverIcons.set(server.id, iconData);
         }
       }
     }
@@ -97,11 +62,6 @@ function setupEventListeners() {
         switchServer(servers[0].id);
       }
     }
-  });
-
-  // Listen for server errors
-  window.electronAPI.onServerError((errorMessage) => {
-    alert(errorMessage);
   });
 
   // Initial add server button listener
@@ -177,18 +137,16 @@ function createServerIcon(server) {
   if (serverIcons.has(server.id)) {
     const img = document.createElement('img');
     img.src = serverIcons.get(server.id);
-    img.alt = sanitizeHTML(server.name);
+    img.alt = server.name;
     icon.appendChild(img);
   } else {
-    // Security: Sanitize text content
-    const initial = sanitizeHTML(server.name.charAt(0).toUpperCase());
+    const initial = server.name.charAt(0).toUpperCase();
     icon.textContent = initial;
   }
 
   // Add tooltip
   const tooltip = document.createElement('span');
   tooltip.className = 'server-name';
-  // Security: Sanitize tooltip text
   tooltip.textContent = server.name;
   icon.appendChild(tooltip);
 
@@ -288,19 +246,16 @@ async function addServer() {
   const url = document.getElementById('serverUrl').value.trim();
   const iconInput = document.getElementById('serverIcon');
 
-  // Security: Client-side validation
   if (!name || !url) {
     alert('Please fill in all required fields');
     return;
   }
 
-  if (!isValidServerName(name)) {
-    alert('Invalid server name. Name must be 1-100 characters and cannot contain special path characters.');
-    return;
-  }
-
-  if (!isValidUrl(url)) {
-    alert('Please enter a valid HTTP or HTTPS URL (e.g., http://localhost:4991)');
+  // Basic URL validation
+  try {
+    new URL(url);
+  } catch (e) {
+    alert('Please enter a valid URL (e.g., http://localhost:4991)');
     return;
   }
 
@@ -309,29 +264,12 @@ async function addServer() {
   // Handle custom icon if provided
   if (iconInput.files && iconInput.files[0]) {
     const file = iconInput.files[0];
-    
-    // Security: Validate file size
-    if (file.size > MAX_ICON_SIZE) {
-      alert('Icon file is too large. Maximum size is 5MB.');
-      return;
-    }
-
-    // Security: Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file.');
-      return;
-    }
-    
     const reader = new FileReader();
     
     reader.onload = (e) => {
       serverData.iconData = e.target.result;
       window.electronAPI.addServer(serverData);
       closeAddServerModal();
-    };
-    
-    reader.onerror = () => {
-      alert('Failed to read icon file.');
     };
     
     reader.readAsDataURL(file);
@@ -380,14 +318,8 @@ function closeRenameModal() {
 function renameServer() {
   const newName = document.getElementById('newServerName').value.trim();
   
-  // Security: Client-side validation
   if (!newName) {
     alert('Please enter a server name');
-    return;
-  }
-
-  if (!isValidServerName(newName)) {
-    alert('Invalid server name. Name must be 1-100 characters and cannot contain special path characters.');
     return;
   }
   
@@ -397,6 +329,7 @@ function renameServer() {
   
   closeRenameModal();
 }
+
 
 // Change icon functions
 function openChangeIconModal(serverId) {
@@ -427,7 +360,7 @@ async function changeIcon() {
   const targetId = pendingServerId;
 
   if (!iconInput.files || !iconInput.files[0]) {
-    // No file selected - remove the existing icon
+    // No file selected — remove the existing icon
     if (targetId) {
       serverIcons.delete(targetId);
       window.electronAPI.updateServer(targetId, { removeIcon: true });
@@ -437,19 +370,6 @@ async function changeIcon() {
   }
   
   const file = iconInput.files[0];
-  
-  // Security: Validate file size
-  if (file.size > MAX_ICON_SIZE) {
-    alert('Icon file is too large. Maximum size is 5MB.');
-    return;
-  }
-
-  // Security: Validate file type
-  if (!file.type.startsWith('image/')) {
-    alert('Please select a valid image file.');
-    return;
-  }
-  
   const reader = new FileReader();
   
   reader.onload = (e) => {
@@ -459,13 +379,10 @@ async function changeIcon() {
     }
     closeChangeIconModal();
   };
-
-  reader.onerror = () => {
-    alert('Failed to read icon file.');
-  };
   
   reader.readAsDataURL(file);
 }
+
 
 // Reorder servers
 function reorderServers(draggedId, targetId) {
@@ -481,6 +398,7 @@ function reorderServers(draggedId, targetId) {
   window.electronAPI.reorderServers(newOrder);
 }
 
+
 // Handle Enter key in modals
 document.addEventListener('keydown', (e) => {
   const addModal = document.getElementById('addServerModal');
@@ -488,19 +406,14 @@ document.addEventListener('keydown', (e) => {
   const iconModal = document.getElementById('changeIconModal');
   
   if (addModal.classList.contains('active') && e.key === 'Enter') {
-    e.preventDefault();
     addServer();
   } else if (addModal.classList.contains('active') && e.key === 'Escape') {
-    e.preventDefault();
     closeAddServerModal();
   } else if (renameModal.classList.contains('active') && e.key === 'Enter') {
-    e.preventDefault();
     renameServer();
   } else if (renameModal.classList.contains('active') && e.key === 'Escape') {
-    e.preventDefault();
     closeRenameModal();
   } else if (iconModal.classList.contains('active') && e.key === 'Escape') {
-    e.preventDefault();
     closeChangeIconModal();
   }
 });

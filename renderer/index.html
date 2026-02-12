@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'">
   <title>Sweetshark Client</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -46,7 +45,7 @@
       <div class="modal-body">
         <div class="form-group">
           <label for="serverName">Server Name</label>
-          <input type="text" id="serverName" placeholder="My Sharkord Server" maxlength="100" />
+          <input type="text" id="serverName" placeholder="My Sharkord Server" />
         </div>
         <div class="form-group">
           <label for="serverUrl">Server URL</label>
@@ -56,7 +55,7 @@
         <div class="form-group">
           <label for="serverIcon">Custom Icon (optional)</label>
           <input type="file" id="serverIcon" accept="image/*" />
-          <small>Select an image file for the server icon (max 5MB)</small>
+          <small>Select an image file for the server icon</small>
         </div>
       </div>
       <div class="modal-footer">
@@ -76,7 +75,7 @@
       <div class="modal-body">
         <div class="form-group">
           <label for="newServerName">New Server Name</label>
-          <input type="text" id="newServerName" placeholder="New Server Name" maxlength="100" />
+          <input type="text" id="newServerName" placeholder="New Server Name" />
         </div>
       </div>
       <div class="modal-footer">
@@ -97,7 +96,7 @@
         <div class="form-group">
           <label for="newServerIcon">Select New Icon</label>
           <input type="file" id="newServerIcon" accept="image/*" />
-          <small>Select an image file (max 5MB), or leave blank and click Apply to remove the current icon</small>
+          <small>Select an image file, or leave blank and click Apply to remove the current icon</small>
         </div>
       </div>
       <div class="modal-footer">
