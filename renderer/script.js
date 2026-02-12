@@ -1,6 +1,9 @@
 let servers = [];
 let activeServerId = null;
 let contextMenuTargetId = null;
+let draggedServerId = null;
+let serverIcons = new Map(); // Cache for loaded custom icons
+let overlayActive = false; // Track if any modal/menu is open
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,8 +14,19 @@ document.addEventListener('DOMContentLoaded', () => {
 // Setup event listeners
 function setupEventListeners() {
   // Listen for server updates from main process
-  window.electronAPI.onServersLoaded((loadedServers) => {
+  window.electronAPI.onServersLoaded(async (loadedServers) => {
     servers = loadedServers;
+    
+    // Load custom icons
+    for (const server of servers) {
+      if (server.icon && !serverIcons.has(server.id)) {
+        const iconData = await window.electronAPI.loadIcon(server.icon);
+        if (iconData) {
+          serverIcons.set(server.id, iconData);
+        }
+      }
+    }
+    
     renderServers();
     
     // Reattach add server button listener after render
@@ -41,6 +55,7 @@ function setupEventListeners() {
 
   window.electronAPI.onServerRemoved((serverId) => {
     console.log('Server removed:', serverId);
+    serverIcons.delete(serverId);
     if (activeServerId === serverId) {
       activeServerId = null;
       if (servers.length > 0) {
@@ -55,10 +70,22 @@ function setupEventListeners() {
     addBtn.onclick = openAddServerModal;
   }
 
-  // Close modal on outside click
+  // Close modals on outside click
   document.getElementById('addServerModal').addEventListener('click', (e) => {
     if (e.target.id === 'addServerModal') {
       closeAddServerModal();
+    }
+  });
+  
+  document.getElementById('renameServerModal').addEventListener('click', (e) => {
+    if (e.target.id === 'renameServerModal') {
+      closeRenameModal();
+    }
+  });
+  
+  document.getElementById('changeIconModal').addEventListener('click', (e) => {
+    if (e.target.id === 'changeIconModal') {
+      closeChangeIconModal();
     }
   });
 
@@ -99,14 +126,22 @@ function createServerIcon(server) {
   const icon = document.createElement('div');
   icon.className = 'server-icon';
   icon.dataset.serverId = server.id;
+  icon.draggable = true;
   
   if (server.id === activeServerId) {
     icon.classList.add('active');
   }
 
-  // Use first letter of server name as icon
-  const initial = server.name.charAt(0).toUpperCase();
-  icon.textContent = initial;
+  // Use custom icon if available, otherwise use first letter
+  if (serverIcons.has(server.id)) {
+    const img = document.createElement('img');
+    img.src = serverIcons.get(server.id);
+    img.alt = server.name;
+    icon.appendChild(img);
+  } else {
+    const initial = server.name.charAt(0).toUpperCase();
+    icon.textContent = initial;
+  }
 
   // Add tooltip
   const tooltip = document.createElement('span');
@@ -123,6 +158,39 @@ function createServerIcon(server) {
   icon.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     showContextMenu(e, server.id);
+  });
+  
+  // Drag and drop events
+  icon.addEventListener('dragstart', (e) => {
+    draggedServerId = server.id;
+    icon.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  
+  icon.addEventListener('dragend', (e) => {
+    icon.classList.remove('dragging');
+    draggedServerId = null;
+  });
+  
+  icon.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedServerId && draggedServerId !== server.id) {
+      icon.classList.add('drag-over');
+    }
+  });
+  
+  icon.addEventListener('dragleave', (e) => {
+    icon.classList.remove('drag-over');
+  });
+  
+  icon.addEventListener('drop', (e) => {
+    e.preventDefault();
+    icon.classList.remove('drag-over');
+    
+    if (draggedServerId && draggedServerId !== server.id) {
+      reorderServers(draggedServerId, server.id);
+    }
   });
 
   return icon;
@@ -151,7 +219,10 @@ function switchServer(serverId) {
 
 // Modal functions
 function openAddServerModal() {
-  try { window.electronAPI.hideView(); } catch(e){}
+  if (!overlayActive) {
+    overlayActive = true;
+    try { window.electronAPI.hideView(); } catch(e) {}
+  }
   document.getElementById('addServerModal').classList.add('active');
   document.getElementById('serverName').focus();
 }
@@ -160,14 +231,22 @@ function closeAddServerModal() {
   document.getElementById('addServerModal').classList.remove('active');
   document.getElementById('serverName').value = '';
   document.getElementById('serverUrl').value = '';
+  document.getElementById('serverIcon').value = '';
+  
+  // Only restore view if no other overlays are open
+  if (overlayActive && !isAnyOverlayOpen()) {
+    overlayActive = false;
+    try { window.electronAPI.showView(); } catch(e) {}
+  }
 }
 
-function addServer() {
+async function addServer() {
   const name = document.getElementById('serverName').value.trim();
   const url = document.getElementById('serverUrl').value.trim();
+  const iconInput = document.getElementById('serverIcon');
 
   if (!name || !url) {
-    alert('Please fill in all fields');
+    alert('Please fill in all required fields');
     return;
   }
 
@@ -179,13 +258,160 @@ function addServer() {
     return;
   }
 
-  window.electronAPI.addServer({ name, url });
-  closeAddServerModal();
-  try { window.electronAPI.showView(); } catch(e){}
+  const serverData = { name, url };
+  
+  // Handle custom icon if provided
+  if (iconInput.files && iconInput.files[0]) {
+    const file = iconInput.files[0];
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      serverData.iconData = e.target.result;
+      window.electronAPI.addServer(serverData);
+      closeAddServerModal();
+    };
+    
+    reader.readAsDataURL(file);
+  } else {
+    window.electronAPI.addServer(serverData);
+    closeAddServerModal();
+  }
+}
+
+// Helper function to check if any overlay is currently open
+function isAnyOverlayOpen() {
+  return document.getElementById('addServerModal').classList.contains('active') ||
+         document.getElementById('renameServerModal').classList.contains('active') ||
+         document.getElementById('changeIconModal').classList.contains('active') ||
+         document.getElementById('contextMenu').classList.contains('active');
+}
+
+// Rename server functions
+function openRenameModal(serverId) {
+  const server = servers.find(s => s.id === serverId);
+  if (!server) return;
+  
+  if (!overlayActive) {
+    overlayActive = true;
+    try { window.electronAPI.hideView(); } catch(e) {}
+  }
+  document.getElementById('renameServerModal').classList.add('active');
+  document.getElementById('newServerName').value = server.name;
+  document.getElementById('newServerName').focus();
+  document.getElementById('newServerName').select();
+}
+
+function closeRenameModal() {
+  document.getElementById('renameServerModal').classList.remove('active');
+  document.getElementById('newServerName').value = '';
+  
+  // Only restore view if no other overlays are open
+  if (overlayActive && !isAnyOverlayOpen()) {
+    overlayActive = false;
+    try { window.electronAPI.showView(); } catch(e) {}
+  }
+}
+
+function renameServer() {
+  const newName = document.getElementById('newServerName').value.trim();
+  
+  if (!newName) {
+    alert('Please enter a server name');
+    return;
+  }
+  
+  if (contextMenuTargetId) {
+    window.electronAPI.updateServer(contextMenuTargetId, { name: newName });
+  }
+  
+  closeRenameModal();
+}
+
+function renameServerFromMenu() {
+  if (contextMenuTargetId) {
+    closeContextMenu(); // This will keep view hidden since we're opening another modal
+    openRenameModal(contextMenuTargetId);
+  }
+}
+
+// Change icon functions
+function openChangeIconModal(serverId) {
+  if (!overlayActive) {
+    overlayActive = true;
+    try { window.electronAPI.hideView(); } catch(e) {}
+  }
+  document.getElementById('changeIconModal').classList.add('active');
+  document.getElementById('newServerIcon').value = '';
+}
+
+function closeChangeIconModal() {
+  document.getElementById('changeIconModal').classList.remove('active');
+  document.getElementById('newServerIcon').value = '';
+  
+  // Only restore view if no other overlays are open
+  if (overlayActive && !isAnyOverlayOpen()) {
+    overlayActive = false;
+    try { window.electronAPI.showView(); } catch(e) {}
+  }
+}
+
+async function changeIcon() {
+  const iconInput = document.getElementById('newServerIcon');
+  
+  if (!iconInput.files || !iconInput.files[0]) {
+    alert('Please select an icon file');
+    return;
+  }
+  
+  const file = iconInput.files[0];
+  const reader = new FileReader();
+  
+  reader.onload = (e) => {
+    if (contextMenuTargetId) {
+      window.electronAPI.updateServer(contextMenuTargetId, { iconData: e.target.result });
+      serverIcons.set(contextMenuTargetId, e.target.result);
+    }
+    closeChangeIconModal();
+  };
+  
+  reader.readAsDataURL(file);
+}
+
+function changeIconFromMenu() {
+  if (contextMenuTargetId) {
+    closeContextMenu(); // This will keep view hidden since we're opening another modal
+    openChangeIconModal(contextMenuTargetId);
+  }
+}
+
+// Refresh server function
+function refreshServerFromMenu() {
+  if (contextMenuTargetId) {
+    window.electronAPI.refreshServer(contextMenuTargetId);
+  }
+  closeContextMenu();
+}
+
+// Reorder servers
+function reorderServers(draggedId, targetId) {
+  const draggedIndex = servers.findIndex(s => s.id === draggedId);
+  const targetIndex = servers.findIndex(s => s.id === targetId);
+  
+  if (draggedIndex === -1 || targetIndex === -1) return;
+  
+  const newOrder = [...servers];
+  const [removed] = newOrder.splice(draggedIndex, 1);
+  newOrder.splice(targetIndex, 0, removed);
+  
+  window.electronAPI.reorderServers(newOrder);
 }
 
 // Context menu functions
 function showContextMenu(event, serverId) {
+  if (!overlayActive) {
+    overlayActive = true;
+    try { window.electronAPI.hideView(); } catch(e) {}
+  }
   const menu = document.getElementById('contextMenu');
   contextMenuTargetId = serverId;
   
@@ -197,6 +423,12 @@ function showContextMenu(event, serverId) {
 function closeContextMenu() {
   document.getElementById('contextMenu').classList.remove('active');
   contextMenuTargetId = null;
+  
+  // Only restore view if no other overlays are open
+  if (overlayActive && !isAnyOverlayOpen()) {
+    overlayActive = false;
+    try { window.electronAPI.showView(); } catch(e) {}
+  }
 }
 
 function removeServerFromMenu() {
@@ -208,12 +440,21 @@ function removeServerFromMenu() {
   closeContextMenu();
 }
 
-// Handle Enter key in modal
+// Handle Enter key in modals
 document.addEventListener('keydown', (e) => {
-  const modal = document.getElementById('addServerModal');
-  if (modal.classList.contains('active') && e.key === 'Enter') {
+  const addModal = document.getElementById('addServerModal');
+  const renameModal = document.getElementById('renameServerModal');
+  const iconModal = document.getElementById('changeIconModal');
+  
+  if (addModal.classList.contains('active') && e.key === 'Enter') {
     addServer();
-  } else if (modal.classList.contains('active') && e.key === 'Escape') {
+  } else if (addModal.classList.contains('active') && e.key === 'Escape') {
     closeAddServerModal();
+  } else if (renameModal.classList.contains('active') && e.key === 'Enter') {
+    renameServer();
+  } else if (renameModal.classList.contains('active') && e.key === 'Escape') {
+    closeRenameModal();
+  } else if (iconModal.classList.contains('active') && e.key === 'Escape') {
+    closeChangeIconModal();
   }
 });

@@ -60,6 +60,59 @@ window.addEventListener('DOMContentLoaded', () => {
         gap: '12px'
       });
 
+      // Create items and store screenshot interval references
+      let screenshotIntervals = [];
+      let pickerClosed = false;
+      let lastScreenshots = new Map(); // Store references to clear old data
+
+      // Function to capture and update screenshots
+      async function updateScreenshots() {
+        if (pickerClosed) return;
+        
+        try {
+          const updatedSources = await ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', { 
+            types: ['window', 'screen']
+          });
+          
+          // Clear old screenshots from memory before updating
+          lastScreenshots.clear();
+          
+          // Update thumbnails
+          updatedSources.forEach((src, index) => {
+            const item = grid.children[index];
+            if (item) {
+              const thumb = item.querySelector('div');
+              if (thumb && src.thumbnail) {
+                // Clear old image data
+                thumb.style.backgroundImage = '';
+                // Set new image
+                thumb.style.backgroundImage = `url(${src.thumbnail})`;
+                // Store reference
+                lastScreenshots.set(src.id, src.thumbnail);
+              }
+            }
+          });
+        } catch (error) {
+          console.error('Failed to update screenshots:', error);
+        }
+      }
+
+      // Function to clean up screenshot intervals and data
+      function cleanupScreenshots() {
+        pickerClosed = true;
+        screenshotIntervals.forEach(interval => clearInterval(interval));
+        screenshotIntervals = [];
+        
+        // Clear all screenshot data from memory
+        lastScreenshots.clear();
+        
+        // Clear background images from DOM elements
+        const thumbs = grid.querySelectorAll('div[style*="background-image"]');
+        thumbs.forEach(thumb => {
+          thumb.style.backgroundImage = '';
+        });
+      }
+
       // Use thumbnails if provided (source.thumbnail is a NativeImage in main, sent as dataURL)
       for (const src of sources) {
         const item = document.createElement('button');
@@ -101,6 +154,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
         item.onclick = async (e) => {
           e.preventDefault();
+          cleanupScreenshots();
           // remove overlay
           overlay.remove();
           // Request stream for chosen source using chromeMediaSourceId constraint
@@ -128,6 +182,10 @@ window.addEventListener('DOMContentLoaded', () => {
         grid.appendChild(item);
       }
 
+      // Start screenshot update interval (every 5 seconds)
+      const interval = setInterval(updateScreenshots, 5000);
+      screenshotIntervals.push(interval);
+
       const cancel = document.createElement('button');
       cancel.textContent = 'Cancel';
       Object.assign(cancel.style, {
@@ -139,7 +197,10 @@ window.addEventListener('DOMContentLoaded', () => {
         borderRadius: '6px',
         cursor: 'pointer'
       });
-      cancel.onclick = () => { overlay.remove(); };
+      cancel.onclick = () => { 
+        cleanupScreenshots();
+        overlay.remove(); 
+      };
 
       card.appendChild(title);
       card.appendChild(grid);
@@ -165,6 +226,15 @@ window.addEventListener('DOMContentLoaded', () => {
             throw err;
           }
         };
+        
+        // Clean up if overlay is removed externally
+        const observer = new MutationObserver((mutations) => {
+          if (!document.contains(overlay)) {
+            cleanupScreenshots();
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
       });
     } catch (error) {
       console.error('Screen sharing error in preload picker:', error);

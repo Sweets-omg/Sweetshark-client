@@ -62,6 +62,28 @@ body {
   font-weight: 600;
   font-size: 18px;
   user-select: none;
+  cursor: grab;
+}
+
+.server-icon.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.server-icon.drag-over {
+  border: 2px dashed #5865f2;
+}
+
+.server-icon img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  transition: border-radius 0.2s ease;
+}
+
+.server-icon:hover img {
+  border-radius: 16px;
 }
 
 .server-icon:hover {
@@ -325,7 +347,7 @@ body {
   padding: 8px 12px;
   border-radius: 3px;
   cursor: pointer;
-  color: #f23f43;
+  color: #dcddde;
   font-size: 14px;
   display: flex;
   align-items: center;
@@ -334,6 +356,15 @@ body {
 }
 
 .context-menu-item:hover {
+  background: #404040;
+  color: white;
+}
+
+.context-menu-item.danger {
+  color: #f23f43;
+}
+
+.context-menu-item.danger:hover {
   background: #f23f43;
   color: white;
 }

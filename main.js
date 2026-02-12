@@ -1,11 +1,18 @@
-const { app, BrowserWindow, BrowserView, ipcMain, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, session, desktopCapturer, Menu } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const Store = require('electron-store');
 
 const store = new Store();
 let mainWindow;
 let currentView = null;
 let serverViews = new Map();
+
+// Create icons directory if it doesn't exist
+const iconsDir = path.join(app.getPath('userData'), 'server-icons');
+if (!fs.existsSync(iconsDir)) {
+  fs.mkdirSync(iconsDir, { recursive: true });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -19,6 +26,9 @@ function createWindow() {
     frame: true,
     backgroundColor: '#1e1e1e'
   });
+
+  // Remove the application menu
+  mainWindow.setMenu(null);
 
   mainWindow.loadFile('renderer/index.html');
 
@@ -93,6 +103,96 @@ function createServerView(server) {
   });
 
   view.webContents.loadURL(server.url);
+  
+  // Enable right-click context menu in webview
+  view.webContents.on('context-menu', (event, params) => {
+    const menuTemplate = [];
+    
+    // Add "Back" and "Forward" navigation items if applicable
+    if (params.editFlags.canUndo || params.editFlags.canRedo) {
+      if (params.editFlags.canUndo) {
+        menuTemplate.push({ label: 'Undo', role: 'undo' });
+      }
+      if (params.editFlags.canRedo) {
+        menuTemplate.push({ label: 'Redo', role: 'redo' });
+      }
+      menuTemplate.push({ type: 'separator' });
+    }
+    
+    // Add cut/copy/paste for editable content and text selection
+    if (params.isEditable) {
+      menuTemplate.push(
+        { label: 'Cut', role: 'cut', enabled: params.editFlags.canCut },
+        { label: 'Copy', role: 'copy', enabled: params.editFlags.canCopy },
+        { label: 'Paste', role: 'paste', enabled: params.editFlags.canPaste }
+      );
+      if (params.editFlags.canDelete) {
+        menuTemplate.push({ label: 'Delete', role: 'delete' });
+      }
+      menuTemplate.push(
+        { type: 'separator' },
+        { label: 'Select All', role: 'selectAll' }
+      );
+    } else if (params.selectionText) {
+      // For non-editable selected text
+      menuTemplate.push(
+        { label: 'Copy', role: 'copy' },
+        { type: 'separator' },
+        { label: 'Select All', role: 'selectAll' }
+      );
+    }
+    
+    // Add link-specific items
+    if (params.linkURL) {
+      if (menuTemplate.length > 0) menuTemplate.push({ type: 'separator' });
+      menuTemplate.push(
+        { 
+          label: 'Copy Link Address', 
+          click: () => {
+            require('electron').clipboard.writeText(params.linkURL);
+          }
+        }
+      );
+    }
+    
+    // Add image-specific items
+    if (params.mediaType === 'image') {
+      if (menuTemplate.length > 0) menuTemplate.push({ type: 'separator' });
+      menuTemplate.push(
+        { 
+          label: 'Copy Image', 
+          click: () => {
+            view.webContents.copyImageAt(params.x, params.y);
+          }
+        },
+        { 
+          label: 'Save Image As...', 
+          click: () => {
+            view.webContents.downloadURL(params.srcURL);
+          }
+        }
+      );
+    }
+    
+    // Add video/audio specific items
+    if (params.mediaType === 'video' || params.mediaType === 'audio') {
+      if (menuTemplate.length > 0) menuTemplate.push({ type: 'separator' });
+      menuTemplate.push(
+        { 
+          label: 'Save As...', 
+          click: () => {
+            view.webContents.downloadURL(params.srcURL);
+          }
+        }
+      );
+    }
+    
+    // Show the menu if there are items
+    if (menuTemplate.length > 0) {
+      const menu = Menu.buildFromTemplate(menuTemplate);
+      menu.popup({ window: mainWindow });
+    }
+  });
 
   serverViews.set(viewId, view);
   return view;
@@ -155,6 +255,14 @@ ipcMain.on('add-server', (event, serverData) => {
     icon: serverData.icon || null
   };
   
+  // Save custom icon if provided
+  if (serverData.iconData) {
+    const iconPath = path.join(iconsDir, `${newServer.id}.png`);
+    const base64Data = serverData.iconData.replace(/^data:image\/\w+;base64,/, '');
+    fs.writeFileSync(iconPath, Buffer.from(base64Data, 'base64'));
+    newServer.icon = iconPath;
+  }
+  
   servers.push(newServer);
   store.set('servers', servers);
   
@@ -162,8 +270,46 @@ ipcMain.on('add-server', (event, serverData) => {
   event.reply('servers-loaded', servers);
 });
 
+ipcMain.on('update-server', (event, serverId, updates) => {
+  const servers = store.get('servers', []);
+  const serverIndex = servers.findIndex(s => s.id === serverId);
+  
+  if (serverIndex !== -1) {
+    // If updating icon, delete old icon file and save new one
+    if (updates.iconData) {
+      // Delete old icon if it exists
+      if (servers[serverIndex].icon && fs.existsSync(servers[serverIndex].icon)) {
+        fs.unlinkSync(servers[serverIndex].icon);
+      }
+      
+      // Save new icon
+      const iconPath = path.join(iconsDir, `${serverId}.png`);
+      const base64Data = updates.iconData.replace(/^data:image\/\w+;base64,/, '');
+      fs.writeFileSync(iconPath, Buffer.from(base64Data, 'base64'));
+      updates.icon = iconPath;
+      delete updates.iconData;
+    }
+    
+    servers[serverIndex] = { ...servers[serverIndex], ...updates };
+    store.set('servers', servers);
+    event.reply('servers-loaded', servers);
+  }
+});
+
+ipcMain.on('reorder-servers', (event, newOrder) => {
+  store.set('servers', newOrder);
+  event.reply('servers-loaded', newOrder);
+});
+
 ipcMain.on('remove-server', (event, serverId) => {
   const servers = store.get('servers', []);
+  const server = servers.find(s => s.id === serverId);
+  
+  // Delete icon file if it exists
+  if (server && server.icon && fs.existsSync(server.icon)) {
+    fs.unlinkSync(server.icon);
+  }
+  
   const filteredServers = servers.filter(s => s.id !== serverId);
   store.set('servers', filteredServers);
   
@@ -179,6 +325,13 @@ ipcMain.on('remove-server', (event, serverId) => {
   
   event.reply('server-removed', serverId);
   event.reply('servers-loaded', filteredServers);
+});
+
+ipcMain.on('refresh-server', (event, serverId) => {
+  if (serverViews.has(serverId)) {
+    const view = serverViews.get(serverId);
+    view.webContents.reload();
+  }
 });
 
 ipcMain.on('switch-server', (event, serverId) => {
@@ -206,29 +359,57 @@ ipcMain.on('show-view', () => {
     try {
       mainWindow.addBrowserView(currentView);
       // restore bounds - keep the view filling the right side (beside sidebar)
-      const [width, height] = mainWindow.getSize();
-      const sidebarWidth = 80; // matches CSS sidebar width
-      currentView.setBounds({ x: sidebarWidth, y: 0, width: width - sidebarWidth, height });
-      currentView.setAutoResize({ width: true, height: true });
+      const sidebarWidth = 72;
+      const contentBounds = mainWindow.getContentBounds();
+      currentView.setBounds({ 
+        x: sidebarWidth, 
+        y: 0, 
+        width: contentBounds.width - sidebarWidth, 
+        height: contentBounds.height 
+      });
     } catch (e) {
       console.error('Error adding BrowserView back:', e);
     }
   }
 });
 
+// Load icon file data for renderer
+ipcMain.handle('load-icon', async (event, iconPath) => {
+  if (iconPath && fs.existsSync(iconPath)) {
+    const data = fs.readFileSync(iconPath);
+    return `data:image/png;base64,${data.toString('base64')}`;
+  }
+  return null;
+});
 
 // Handle screen sharing sources request
 ipcMain.handle('get-sources', async () => {
   const sources = await desktopCapturer.getSources({
-    types: ['window', 'screen']
+    types: ['window', 'screen'],
+    thumbnailSize: { width: 300, height: 200 }
   });
-  return sources;
+  
+  // Convert thumbnails to data URLs
+  return sources.map(source => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail.toDataURL()
+  }));
 });
 
 // Handle desktop capturer for BrowserViews
 ipcMain.handle('DESKTOP_CAPTURER_GET_SOURCES', async (event, opts) => {
-  const sources = await desktopCapturer.getSources(opts);
-  return sources;
+  const sources = await desktopCapturer.getSources({
+    ...opts,
+    thumbnailSize: { width: 300, height: 200 }
+  });
+  
+  // Convert thumbnails to data URLs for the picker
+  return sources.map(source => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail.toDataURL()
+  }));
 });
 
 app.whenReady().then(() => {
