@@ -275,7 +275,16 @@ ipcMain.on('update-server', (event, serverId, updates) => {
   const serverIndex = servers.findIndex(s => s.id === serverId);
   
   if (serverIndex !== -1) {
-    // If updating icon, delete old icon file and save new one
+    // If removing icon explicitly
+    if (updates.removeIcon) {
+      if (servers[serverIndex].icon && fs.existsSync(servers[serverIndex].icon)) {
+        fs.unlinkSync(servers[serverIndex].icon);
+      }
+      servers[serverIndex].icon = null;
+      delete updates.removeIcon;
+    }
+    
+    // If updating icon with new data, delete old icon file and save new one
     if (updates.iconData) {
       // Delete old icon if it exists
       if (servers[serverIndex].icon && fs.existsSync(servers[serverIndex].icon)) {
@@ -341,6 +350,29 @@ ipcMain.on('switch-server', (event, serverId) => {
 ipcMain.on('get-servers', (event) => {
   const servers = store.get('servers', []);
   event.reply('servers-loaded', servers);
+});
+
+ipcMain.on('show-server-context-menu', (event, { serverId }) => {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Rename Server',
+      click: () => mainWindow.webContents.send('ctx-rename-server', serverId)
+    },
+    {
+      label: 'Change Icon',
+      click: () => mainWindow.webContents.send('ctx-change-icon-server', serverId)
+    },
+    {
+      label: 'Refresh',
+      click: () => mainWindow.webContents.send('ctx-refresh-server', serverId)
+    },
+    { type: 'separator' },
+    {
+      label: 'Remove Server',
+      click: () => mainWindow.webContents.send('ctx-remove-server', serverId)
+    }
+  ]);
+  menu.popup({ window: mainWindow });
 });
 
 // Handlers to temporarily hide/show the BrowserView so modals in the main window can appear above it.

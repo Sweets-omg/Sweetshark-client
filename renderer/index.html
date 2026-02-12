@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sharkord Client</title>
+  <title>Sweetshark Client</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -27,7 +27,7 @@
           <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
           </svg>
-          <h1>Welcome to Sharkord Client</h1>
+          <h1>Welcome to Sweetshark Client</h1>
           <p>Add a server to get started</p>
           <button class="primary-button" onclick="openAddServerModal()">Add Server</button>
         </div>
@@ -96,46 +96,13 @@
         <div class="form-group">
           <label for="newServerIcon">Select New Icon</label>
           <input type="file" id="newServerIcon" accept="image/*" />
-          <small>Select an image file for the server icon</small>
+          <small>Select an image file, or leave blank and click Apply to remove the current icon</small>
         </div>
       </div>
       <div class="modal-footer">
         <button class="secondary-button" onclick="closeChangeIconModal()">Cancel</button>
-        <button class="primary-button" onclick="changeIcon()">Change Icon</button>
+        <button class="primary-button" onclick="changeIcon()">Apply</button>
       </div>
-    </div>
-  </div>
-
-  <!-- Context Menu for servers -->
-  <div class="context-menu" id="contextMenu">
-    <div class="context-menu-item" onclick="renameServerFromMenu()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-      </svg>
-      Rename Server
-    </div>
-    <div class="context-menu-item" onclick="changeIconFromMenu()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-        <circle cx="8.5" cy="8.5" r="1.5"></circle>
-        <polyline points="21 15 16 10 5 21"></polyline>
-      </svg>
-      Change Icon
-    </div>
-    <div class="context-menu-item" onclick="refreshServerFromMenu()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="23 4 23 10 17 10"></polyline>
-        <polyline points="1 20 1 14 7 14"></polyline>
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-      </svg>
-      Refresh Server
-    </div>
-    <div class="context-menu-item danger" onclick="removeServerFromMenu()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-      </svg>
-      Remove Server
     </div>
   </div>
 

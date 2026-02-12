@@ -1,7 +1,7 @@
 {
-  "name": "sharkord-client",
+  "name": "sweetshark-client",
   "version": "1.0.0",
-  "description": "Multi-server client for Sharkord",
+  "description": "Multi-server Sharkord client vibe-coded by Sweets",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -11,8 +11,8 @@
     "build:all": "electron-builder -mwl"
   },
   "build": {
-    "appId": "com.sharkord.client",
-    "productName": "Sharkord Client",
+    "appId": "com.sweetshark.client",
+    "productName": "Sweetshark Client",
     "files": [
       "main.js",
       "preload.js",

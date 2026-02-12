@@ -1,6 +1,6 @@
 let servers = [];
 let activeServerId = null;
-let contextMenuTargetId = null;
+let pendingServerId = null; // Holds server id for the currently open modal operation
 let draggedServerId = null;
 let serverIcons = new Map(); // Cache for loaded custom icons
 let overlayActive = false; // Track if any modal/menu is open
@@ -89,18 +89,19 @@ function setupEventListeners() {
     }
   });
 
-  // Hide context menu on click outside
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.context-menu')) {
-      closeContextMenu();
+  // Native context menu callbacks from main process
+  window.electronAPI.onCtxRenameServer((id) => openRenameModal(id));
+  window.electronAPI.onCtxChangeIconServer((id) => openChangeIconModal(id));
+  window.electronAPI.onCtxRefreshServer((id) => window.electronAPI.refreshServer(id));
+  window.electronAPI.onCtxRemoveServer((id) => {
+    if (confirm('Are you sure you want to remove this server?')) {
+      window.electronAPI.removeServer(id);
     }
   });
 
-  // Prevent default context menu
+  // Prevent default context menu on non-server areas
   document.addEventListener('contextmenu', (e) => {
-    if (!e.target.closest('.server-icon:not(.add-server)')) {
-      e.preventDefault();
-    }
+    e.preventDefault();
   });
 }
 
@@ -154,10 +155,10 @@ function createServerIcon(server) {
     switchServer(server.id);
   });
 
-  // Right click for context menu
+  // Right click for native context menu
   icon.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    showContextMenu(e, server.id);
+    window.electronAPI.showContextMenu(server.id);
   });
   
   // Drag and drop events
@@ -282,14 +283,15 @@ async function addServer() {
 function isAnyOverlayOpen() {
   return document.getElementById('addServerModal').classList.contains('active') ||
          document.getElementById('renameServerModal').classList.contains('active') ||
-         document.getElementById('changeIconModal').classList.contains('active') ||
-         document.getElementById('contextMenu').classList.contains('active');
+         document.getElementById('changeIconModal').classList.contains('active');
 }
 
 // Rename server functions
 function openRenameModal(serverId) {
   const server = servers.find(s => s.id === serverId);
   if (!server) return;
+  
+  pendingServerId = serverId;
   
   if (!overlayActive) {
     overlayActive = true;
@@ -304,6 +306,7 @@ function openRenameModal(serverId) {
 function closeRenameModal() {
   document.getElementById('renameServerModal').classList.remove('active');
   document.getElementById('newServerName').value = '';
+  pendingServerId = null;
   
   // Only restore view if no other overlays are open
   if (overlayActive && !isAnyOverlayOpen()) {
@@ -320,22 +323,18 @@ function renameServer() {
     return;
   }
   
-  if (contextMenuTargetId) {
-    window.electronAPI.updateServer(contextMenuTargetId, { name: newName });
+  if (pendingServerId) {
+    window.electronAPI.updateServer(pendingServerId, { name: newName });
   }
   
   closeRenameModal();
 }
 
-function renameServerFromMenu() {
-  if (contextMenuTargetId) {
-    closeContextMenu(); // This will keep view hidden since we're opening another modal
-    openRenameModal(contextMenuTargetId);
-  }
-}
 
 // Change icon functions
 function openChangeIconModal(serverId) {
+  pendingServerId = serverId;
+  
   if (!overlayActive) {
     overlayActive = true;
     try { window.electronAPI.hideView(); } catch(e) {}
@@ -347,6 +346,7 @@ function openChangeIconModal(serverId) {
 function closeChangeIconModal() {
   document.getElementById('changeIconModal').classList.remove('active');
   document.getElementById('newServerIcon').value = '';
+  pendingServerId = null;
   
   // Only restore view if no other overlays are open
   if (overlayActive && !isAnyOverlayOpen()) {
@@ -357,9 +357,15 @@ function closeChangeIconModal() {
 
 async function changeIcon() {
   const iconInput = document.getElementById('newServerIcon');
-  
+  const targetId = pendingServerId;
+
   if (!iconInput.files || !iconInput.files[0]) {
-    alert('Please select an icon file');
+    // No file selected — remove the existing icon
+    if (targetId) {
+      serverIcons.delete(targetId);
+      window.electronAPI.updateServer(targetId, { removeIcon: true });
+    }
+    closeChangeIconModal();
     return;
   }
   
@@ -367,9 +373,9 @@ async function changeIcon() {
   const reader = new FileReader();
   
   reader.onload = (e) => {
-    if (contextMenuTargetId) {
-      window.electronAPI.updateServer(contextMenuTargetId, { iconData: e.target.result });
-      serverIcons.set(contextMenuTargetId, e.target.result);
+    if (targetId) {
+      serverIcons.set(targetId, e.target.result);
+      window.electronAPI.updateServer(targetId, { iconData: e.target.result });
     }
     closeChangeIconModal();
   };
@@ -377,20 +383,6 @@ async function changeIcon() {
   reader.readAsDataURL(file);
 }
 
-function changeIconFromMenu() {
-  if (contextMenuTargetId) {
-    closeContextMenu(); // This will keep view hidden since we're opening another modal
-    openChangeIconModal(contextMenuTargetId);
-  }
-}
-
-// Refresh server function
-function refreshServerFromMenu() {
-  if (contextMenuTargetId) {
-    window.electronAPI.refreshServer(contextMenuTargetId);
-  }
-  closeContextMenu();
-}
 
 // Reorder servers
 function reorderServers(draggedId, targetId) {
@@ -406,39 +398,6 @@ function reorderServers(draggedId, targetId) {
   window.electronAPI.reorderServers(newOrder);
 }
 
-// Context menu functions
-function showContextMenu(event, serverId) {
-  if (!overlayActive) {
-    overlayActive = true;
-    try { window.electronAPI.hideView(); } catch(e) {}
-  }
-  const menu = document.getElementById('contextMenu');
-  contextMenuTargetId = serverId;
-  
-  menu.style.left = event.pageX + 'px';
-  menu.style.top = event.pageY + 'px';
-  menu.classList.add('active');
-}
-
-function closeContextMenu() {
-  document.getElementById('contextMenu').classList.remove('active');
-  contextMenuTargetId = null;
-  
-  // Only restore view if no other overlays are open
-  if (overlayActive && !isAnyOverlayOpen()) {
-    overlayActive = false;
-    try { window.electronAPI.showView(); } catch(e) {}
-  }
-}
-
-function removeServerFromMenu() {
-  if (contextMenuTargetId) {
-    if (confirm('Are you sure you want to remove this server?')) {
-      window.electronAPI.removeServer(contextMenuTargetId);
-    }
-  }
-  closeContextMenu();
-}
 
 // Handle Enter key in modals
 document.addEventListener('keydown', (e) => {
