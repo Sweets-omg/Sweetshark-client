@@ -121,7 +121,7 @@ Right-click on a server icon and select "Remove Server"
 
 ## License
 
-MIT
+NONE
 
 ## Credits
 
