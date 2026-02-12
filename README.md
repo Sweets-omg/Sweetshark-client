@@ -61,7 +61,31 @@ npm run build:all
 
 Builds will be located in the `dist/` folder.
 
-## Usage
+## Building a Standalone Portable .exe (No Installation Required)
+
+If you want a single `.exe` file you can run from anywhere — USB drive, Downloads folder, anywhere — without installing anything or keeping it next to a bunch of other files, use the **portable** build.
+
+### What's the difference?
+
+| | `npm run build:win` (NSIS installer) | `npm run build:win-portable` |
+|---|---|---|
+| Output | An installer `.exe` that installs the app | A single `.exe` you run directly |
+| Requires installation | Yes | No |
+| Can move/share the file | Not easily | Yes, it's self-contained |
+| App data (servers, icons) | Stored in `%AppData%` | Stored next to the `.exe` |
+
+### How to build it
+
+```bash
+npm install
+npm run build:win-portable
+```
+
+The portable `.exe` will be in `dist/` and will be named something like `Sweetshark Client 1.0.0.exe`. That's the only file you need — copy it anywhere, double-click, done.
+
+> **Note:** `npm run build:win` now builds **both** the installer and the portable `.exe` at the same time, so you'll get both in `dist/` if you run that instead.
+
+
 
 ### Adding a Server
 
@@ -121,7 +145,7 @@ Right-click on a server icon and select "Remove Server"
 
 ## License
 
-NONE
+NONE - IT'S ALL AI GENERATED.
 
 ## Credits
 
