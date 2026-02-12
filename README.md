@@ -1,4 +1,8 @@
-# Sharkord Client
+# Sweetshark Sharkord Client
+
+# DISCLAIMER: ALL OF THIS IS AI GENERATED. I TAKE NO RESPONSIBILITY FOR ANYTHING THAT HAPPENS WHEN YOU USE THIS CLIENT.
+
+# USE AT YOUR OWN RISK.
 
 A multi-server Electron client for Sharkord with Discord-inspired UI.
 
