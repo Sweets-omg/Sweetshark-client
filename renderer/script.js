@@ -1,9 +1,9 @@
 let servers = [];
 let activeServerId = null;
-let pendingServerId = null; // Holds server id for the currently open modal operation
+let pendingServerId = null;
 let draggedServerId = null;
-let serverIcons = new Map(); // Cache for loaded custom icons
-let overlayActive = false; // Track if any modal/menu is open
+let serverIcons = new Map();
+let overlayActive = false;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -13,36 +13,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup event listeners
 function setupEventListeners() {
-  // Listen for server updates from main process
   window.electronAPI.onServersLoaded(async (loadedServers) => {
     servers = loadedServers;
-    
-    // Load custom icons
+
     for (const server of servers) {
       if (server.icon && !serverIcons.has(server.id)) {
         const iconData = await window.electronAPI.loadIcon(server.icon);
-        if (iconData) {
-          serverIcons.set(server.id, iconData);
-        }
+        if (iconData) serverIcons.set(server.id, iconData);
       }
     }
-    
+
     renderServers();
-    
-    // Reattach add server button listener after render
+
     const addBtn = document.getElementById('addServerBtn');
-    if (addBtn) {
-      addBtn.onclick = openAddServerModal;
-    }
-    
-    // Hide welcome screen if there are servers
+    if (addBtn) addBtn.onclick = openAddServerModal;
+
     if (servers.length > 0) {
       document.getElementById('welcomeScreen').classList.add('hidden');
-      
-      // Auto-select first server if none selected
-      if (!activeServerId && servers.length > 0) {
-        switchServer(servers[0].id);
-      }
+      if (!activeServerId) switchServer(servers[0].id);
     } else {
       document.getElementById('welcomeScreen').classList.remove('hidden');
     }
@@ -58,287 +46,220 @@ function setupEventListeners() {
     serverIcons.delete(serverId);
     if (activeServerId === serverId) {
       activeServerId = null;
-      if (servers.length > 0) {
-        switchServer(servers[0].id);
-      }
+      if (servers.length > 0) switchServer(servers[0].id);
     }
   });
 
-  // Initial add server button listener
+  // Show permissions setup on first launch
+  window.electronAPI.onShowPermissionsSetup(() => {
+    openPermissionsModal();
+  });
+
   const addBtn = document.getElementById('addServerBtn');
-  if (addBtn) {
-    addBtn.onclick = openAddServerModal;
-  }
+  if (addBtn) addBtn.onclick = openAddServerModal;
 
-  // Close modals on outside click
   document.getElementById('addServerModal').addEventListener('click', (e) => {
-    if (e.target.id === 'addServerModal') {
-      closeAddServerModal();
-    }
+    if (e.target.id === 'addServerModal') closeAddServerModal();
   });
-  
   document.getElementById('renameServerModal').addEventListener('click', (e) => {
-    if (e.target.id === 'renameServerModal') {
-      closeRenameModal();
-    }
+    if (e.target.id === 'renameServerModal') closeRenameModal();
   });
-  
   document.getElementById('changeIconModal').addEventListener('click', (e) => {
-    if (e.target.id === 'changeIconModal') {
-      closeChangeIconModal();
-    }
+    if (e.target.id === 'changeIconModal') closeChangeIconModal();
   });
 
-  // Native context menu callbacks from main process
-  window.electronAPI.onCtxRenameServer((id) => openRenameModal(id));
+  window.electronAPI.onCtxRenameServer((id)    => openRenameModal(id));
   window.electronAPI.onCtxChangeIconServer((id) => openChangeIconModal(id));
-  window.electronAPI.onCtxRefreshServer((id) => window.electronAPI.refreshServer(id));
-  window.electronAPI.onCtxRemoveServer((id) => {
+  window.electronAPI.onCtxRefreshServer((id)    => window.electronAPI.refreshServer(id));
+  window.electronAPI.onCtxRemoveServer((id)     => {
     if (confirm('Are you sure you want to remove this server?')) {
       window.electronAPI.removeServer(id);
     }
   });
 
-  // Prevent default context menu on non-server areas
-  document.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-  });
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-// Render server icons
+// ── Permissions Modal ─────────────────────────────────────────────────────────
+
+async function openPermissionsModal() {
+  // Pre-fill with any previously stored values (e.g. if somehow triggered again)
+  const result = await window.electronAPI.getPermissions();
+  const perms = result.permissions;
+  document.getElementById('perm-notifications').checked  = perms.notifications;
+  document.getElementById('perm-screenCapture').checked  = perms.screenCapture;
+  document.getElementById('perm-audio').checked          = perms.audio;
+  document.getElementById('perm-video').checked          = perms.video;
+
+  document.getElementById('permissionsModal').classList.add('active');
+}
+
+function savePermissions() {
+  const permissions = {
+    notifications:  document.getElementById('perm-notifications').checked,
+    screenCapture:  document.getElementById('perm-screenCapture').checked,
+    audio:          document.getElementById('perm-audio').checked,
+    video:          document.getElementById('perm-video').checked
+  };
+
+  window.electronAPI.setPermissions(permissions);
+  document.getElementById('permissionsModal').classList.remove('active');
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
 function renderServers() {
   const serverList = document.getElementById('serverList');
   const addServerBtn = document.getElementById('addServerBtn');
-  
-  // Clear existing servers (except add button)
+
   while (serverList.firstChild && serverList.firstChild !== addServerBtn) {
     serverList.removeChild(serverList.firstChild);
   }
 
-  // Add server icons
   servers.forEach(server => {
-    const serverIcon = createServerIcon(server);
-    serverList.insertBefore(serverIcon, addServerBtn);
+    serverList.insertBefore(createServerIcon(server), addServerBtn);
   });
 }
 
-// Create server icon element
 function createServerIcon(server) {
   const icon = document.createElement('div');
   icon.className = 'server-icon';
   icon.dataset.serverId = server.id;
   icon.draggable = true;
-  
-  if (server.id === activeServerId) {
-    icon.classList.add('active');
-  }
 
-  // Use custom icon if available, otherwise use first letter
+  if (server.id === activeServerId) icon.classList.add('active');
+
   if (serverIcons.has(server.id)) {
     const img = document.createElement('img');
     img.src = serverIcons.get(server.id);
     img.alt = server.name;
     icon.appendChild(img);
   } else {
-    const initial = server.name.charAt(0).toUpperCase();
-    icon.textContent = initial;
+    icon.textContent = server.name.charAt(0).toUpperCase();
   }
 
-  // Add tooltip
   const tooltip = document.createElement('span');
   tooltip.className = 'server-name';
   tooltip.textContent = server.name;
   icon.appendChild(tooltip);
 
-  // Click to switch server
-  icon.addEventListener('click', () => {
-    switchServer(server.id);
-  });
-
-  // Right click for native context menu
+  icon.addEventListener('click',       () => switchServer(server.id));
   icon.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     window.electronAPI.showContextMenu(server.id);
   });
-  
-  // Drag and drop events
+
   icon.addEventListener('dragstart', (e) => {
     draggedServerId = server.id;
     icon.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
   });
-  
-  icon.addEventListener('dragend', (e) => {
-    icon.classList.remove('dragging');
-    draggedServerId = null;
-  });
-  
-  icon.addEventListener('dragover', (e) => {
+  icon.addEventListener('dragend',   () => { icon.classList.remove('dragging'); draggedServerId = null; });
+  icon.addEventListener('dragover',  (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (draggedServerId && draggedServerId !== server.id) {
-      icon.classList.add('drag-over');
-    }
+    if (draggedServerId && draggedServerId !== server.id) icon.classList.add('drag-over');
   });
-  
-  icon.addEventListener('dragleave', (e) => {
-    icon.classList.remove('drag-over');
-  });
-  
-  icon.addEventListener('drop', (e) => {
+  icon.addEventListener('dragleave', () => icon.classList.remove('drag-over'));
+  icon.addEventListener('drop',      (e) => {
     e.preventDefault();
     icon.classList.remove('drag-over');
-    
-    if (draggedServerId && draggedServerId !== server.id) {
-      reorderServers(draggedServerId, server.id);
-    }
+    if (draggedServerId && draggedServerId !== server.id) reorderServers(draggedServerId, server.id);
   });
 
   return icon;
 }
 
-// Switch to a server
+// ── Server switching ──────────────────────────────────────────────────────────
+
 function switchServer(serverId) {
   activeServerId = serverId;
-  
-  // Update UI
-  document.querySelectorAll('.server-icon').forEach(icon => {
-    icon.classList.remove('active');
-  });
-  
+
+  document.querySelectorAll('.server-icon').forEach(i => i.classList.remove('active'));
   const activeIcon = document.querySelector(`[data-server-id="${serverId}"]`);
-  if (activeIcon) {
-    activeIcon.classList.add('active');
-  }
+  if (activeIcon) activeIcon.classList.add('active');
 
-  // Hide welcome screen
   document.getElementById('welcomeScreen').classList.add('hidden');
-
-  // Tell main process to switch
   window.electronAPI.switchServer(serverId);
 }
 
-// Modal functions
+// ── Add Server Modal ──────────────────────────────────────────────────────────
+
 function openAddServerModal() {
-  if (!overlayActive) {
-    overlayActive = true;
-    try { window.electronAPI.hideView(); } catch(e) {}
-  }
+  if (!overlayActive) { overlayActive = true; try { window.electronAPI.hideView(); } catch(e) {} }
   document.getElementById('addServerModal').classList.add('active');
   document.getElementById('serverName').focus();
 }
 
 function closeAddServerModal() {
   document.getElementById('addServerModal').classList.remove('active');
-  document.getElementById('serverName').value = '';
-  document.getElementById('serverUrl').value = '';
-  document.getElementById('serverIcon').value = '';
-  
-  // Only restore view if no other overlays are open
-  if (overlayActive && !isAnyOverlayOpen()) {
-    overlayActive = false;
-    try { window.electronAPI.showView(); } catch(e) {}
-  }
+  document.getElementById('serverName').value  = '';
+  document.getElementById('serverUrl').value   = '';
+  document.getElementById('serverIcon').value  = '';
+  if (overlayActive && !isAnyOverlayOpen()) { overlayActive = false; try { window.electronAPI.showView(); } catch(e) {} }
 }
 
 async function addServer() {
   const name = document.getElementById('serverName').value.trim();
-  const url = document.getElementById('serverUrl').value.trim();
+  const url  = document.getElementById('serverUrl').value.trim();
   const iconInput = document.getElementById('serverIcon');
 
-  if (!name || !url) {
-    alert('Please fill in all required fields');
-    return;
-  }
+  if (!name || !url) { alert('Please fill in all required fields'); return; }
 
-  // Basic URL validation
-  try {
-    new URL(url);
-  } catch (e) {
+  try { new URL(url); } catch (e) {
     alert('Please enter a valid URL (e.g., http://localhost:4991)');
     return;
   }
 
   const serverData = { name, url };
-  
-  // Handle custom icon if provided
+
   if (iconInput.files && iconInput.files[0]) {
-    const file = iconInput.files[0];
     const reader = new FileReader();
-    
     reader.onload = (e) => {
       serverData.iconData = e.target.result;
       window.electronAPI.addServer(serverData);
       closeAddServerModal();
     };
-    
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(iconInput.files[0]);
   } else {
     window.electronAPI.addServer(serverData);
     closeAddServerModal();
   }
 }
 
-// Helper function to check if any overlay is currently open
-function isAnyOverlayOpen() {
-  return document.getElementById('addServerModal').classList.contains('active') ||
-         document.getElementById('renameServerModal').classList.contains('active') ||
-         document.getElementById('changeIconModal').classList.contains('active');
-}
+// ── Rename Modal ──────────────────────────────────────────────────────────────
 
-// Rename server functions
 function openRenameModal(serverId) {
   const server = servers.find(s => s.id === serverId);
   if (!server) return;
-  
   pendingServerId = serverId;
-  
-  if (!overlayActive) {
-    overlayActive = true;
-    try { window.electronAPI.hideView(); } catch(e) {}
-  }
+  if (!overlayActive) { overlayActive = true; try { window.electronAPI.hideView(); } catch(e) {} }
   document.getElementById('renameServerModal').classList.add('active');
-  document.getElementById('newServerName').value = server.name;
-  document.getElementById('newServerName').focus();
-  document.getElementById('newServerName').select();
+  const input = document.getElementById('newServerName');
+  input.value = server.name;
+  input.focus();
+  input.select();
 }
 
 function closeRenameModal() {
   document.getElementById('renameServerModal').classList.remove('active');
   document.getElementById('newServerName').value = '';
   pendingServerId = null;
-  
-  // Only restore view if no other overlays are open
-  if (overlayActive && !isAnyOverlayOpen()) {
-    overlayActive = false;
-    try { window.electronAPI.showView(); } catch(e) {}
-  }
+  if (overlayActive && !isAnyOverlayOpen()) { overlayActive = false; try { window.electronAPI.showView(); } catch(e) {} }
 }
 
 function renameServer() {
   const newName = document.getElementById('newServerName').value.trim();
-  
-  if (!newName) {
-    alert('Please enter a server name');
-    return;
-  }
-  
-  if (pendingServerId) {
-    window.electronAPI.updateServer(pendingServerId, { name: newName });
-  }
-  
+  if (!newName) { alert('Please enter a server name'); return; }
+  if (pendingServerId) window.electronAPI.updateServer(pendingServerId, { name: newName });
   closeRenameModal();
 }
 
+// ── Change Icon Modal ─────────────────────────────────────────────────────────
 
-// Change icon functions
 function openChangeIconModal(serverId) {
   pendingServerId = serverId;
-  
-  if (!overlayActive) {
-    overlayActive = true;
-    try { window.electronAPI.hideView(); } catch(e) {}
-  }
+  if (!overlayActive) { overlayActive = true; try { window.electronAPI.hideView(); } catch(e) {} }
   document.getElementById('changeIconModal').classList.add('active');
   document.getElementById('newServerIcon').value = '';
 }
@@ -347,20 +268,14 @@ function closeChangeIconModal() {
   document.getElementById('changeIconModal').classList.remove('active');
   document.getElementById('newServerIcon').value = '';
   pendingServerId = null;
-  
-  // Only restore view if no other overlays are open
-  if (overlayActive && !isAnyOverlayOpen()) {
-    overlayActive = false;
-    try { window.electronAPI.showView(); } catch(e) {}
-  }
+  if (overlayActive && !isAnyOverlayOpen()) { overlayActive = false; try { window.electronAPI.showView(); } catch(e) {} }
 }
 
 async function changeIcon() {
   const iconInput = document.getElementById('newServerIcon');
-  const targetId = pendingServerId;
+  const targetId  = pendingServerId;
 
   if (!iconInput.files || !iconInput.files[0]) {
-    // No file selected — remove the existing icon
     if (targetId) {
       serverIcons.delete(targetId);
       window.electronAPI.updateServer(targetId, { removeIcon: true });
@@ -368,10 +283,8 @@ async function changeIcon() {
     closeChangeIconModal();
     return;
   }
-  
-  const file = iconInput.files[0];
+
   const reader = new FileReader();
-  
   reader.onload = (e) => {
     if (targetId) {
       serverIcons.set(targetId, e.target.result);
@@ -379,41 +292,40 @@ async function changeIcon() {
     }
     closeChangeIconModal();
   };
-  
-  reader.readAsDataURL(file);
+  reader.readAsDataURL(iconInput.files[0]);
 }
 
+// ── Reorder ───────────────────────────────────────────────────────────────────
 
-// Reorder servers
 function reorderServers(draggedId, targetId) {
   const draggedIndex = servers.findIndex(s => s.id === draggedId);
-  const targetIndex = servers.findIndex(s => s.id === targetId);
-  
+  const targetIndex  = servers.findIndex(s => s.id === targetId);
   if (draggedIndex === -1 || targetIndex === -1) return;
-  
+
   const newOrder = [...servers];
   const [removed] = newOrder.splice(draggedIndex, 1);
   newOrder.splice(targetIndex, 0, removed);
-  
   window.electronAPI.reorderServers(newOrder);
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Handle Enter key in modals
+function isAnyOverlayOpen() {
+  return document.getElementById('addServerModal').classList.contains('active')    ||
+         document.getElementById('renameServerModal').classList.contains('active') ||
+         document.getElementById('changeIconModal').classList.contains('active');
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+
 document.addEventListener('keydown', (e) => {
-  const addModal = document.getElementById('addServerModal');
+  const addModal    = document.getElementById('addServerModal');
   const renameModal = document.getElementById('renameServerModal');
-  const iconModal = document.getElementById('changeIconModal');
-  
-  if (addModal.classList.contains('active') && e.key === 'Enter') {
-    addServer();
-  } else if (addModal.classList.contains('active') && e.key === 'Escape') {
-    closeAddServerModal();
-  } else if (renameModal.classList.contains('active') && e.key === 'Enter') {
-    renameServer();
-  } else if (renameModal.classList.contains('active') && e.key === 'Escape') {
-    closeRenameModal();
-  } else if (iconModal.classList.contains('active') && e.key === 'Escape') {
-    closeChangeIconModal();
-  }
+  const iconModal   = document.getElementById('changeIconModal');
+
+  if      (addModal.classList.contains('active')    && e.key === 'Enter')  addServer();
+  else if (addModal.classList.contains('active')    && e.key === 'Escape') closeAddServerModal();
+  else if (renameModal.classList.contains('active') && e.key === 'Enter')  renameServer();
+  else if (renameModal.classList.contains('active') && e.key === 'Escape') closeRenameModal();
+  else if (iconModal.classList.contains('active')   && e.key === 'Escape') closeChangeIconModal();
 });

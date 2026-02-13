@@ -14,6 +14,185 @@ if (!fs.existsSync(iconsDir)) {
   fs.mkdirSync(iconsDir, { recursive: true });
 }
 
+// Default permissions — geolocation is always off and not user-configurable
+const DEFAULT_PERMISSIONS = {
+  notifications: false,
+  screenCapture: false,
+  audio: false,
+  video: false
+};
+
+function getPermissions() {
+  return store.get('permissions', DEFAULT_PERMISSIONS);
+}
+
+// Injected into every BrowserView page (main world) to hook getDisplayMedia.
+// Uses window.__sharkordBridge.getSources() which is exposed via contextBridge
+// in view-preload.js, so ipcRenderer never touches the page context directly.
+const SCREEN_SHARE_INJECTION = `
+(function () {
+  if (!navigator.mediaDevices || !window.__sharkordBridge) return;
+
+  const origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia
+    ? navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices)
+    : null;
+
+  navigator.mediaDevices.getDisplayMedia = async function (constraints) {
+    let sources;
+    try {
+      sources = await window.__sharkordBridge.getSources();
+    } catch (err) {
+      if (origGetDisplayMedia) return origGetDisplayMedia(constraints);
+      throw err;
+    }
+
+    if (!sources || sources.length === 0) {
+      if (origGetDisplayMedia) return origGetDisplayMedia(constraints);
+      throw new Error('No screen sources available');
+    }
+
+    return new Promise((resolve, reject) => {
+      const OVERLAY_ID = '__sharkord_screenshare_picker';
+      const existing = document.getElementById(OVERLAY_ID);
+      if (existing) existing.remove();
+
+      // ── Overlay shell ────────────────────────────────────────────────────
+      const overlay = document.createElement('div');
+      overlay.id = OVERLAY_ID;
+      Object.assign(overlay.style, {
+        position: 'fixed', zIndex: '99999999', inset: '0',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0,0,0,0.7)', color: '#fff',
+        fontFamily: 'sans-serif'
+      });
+
+      const card = document.createElement('div');
+      Object.assign(card.style, {
+        width: '900px', maxWidth: '95%', maxHeight: '85%', overflowY: 'auto',
+        background: '#111', borderRadius: '8px', padding: '16px',
+        boxSizing: 'border-box', border: '1px solid rgba(255,255,255,0.08)'
+      });
+
+      const title = document.createElement('div');
+      title.textContent = 'Choose a screen or window to share';
+      Object.assign(title.style, { fontSize: '18px', marginBottom: '12px' });
+
+      const grid = document.createElement('div');
+      Object.assign(grid.style, {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+        gap: '12px'
+      });
+
+      // ── Cleanup helpers ──────────────────────────────────────────────────
+      let updateInterval = null;
+      let closed = false;
+
+      function cleanup() {
+        closed = true;
+        if (updateInterval) clearInterval(updateInterval);
+        updateInterval = null;
+        overlay.remove();
+      }
+
+      // ── Thumbnail refresh ────────────────────────────────────────────────
+      async function refreshThumbnails() {
+        if (closed) return;
+        try {
+          const updated = await window.__sharkordBridge.getSources();
+          updated.forEach((src, i) => {
+            const item = grid.children[i];
+            if (!item) return;
+            const thumb = item.querySelector('.ss-thumb');
+            if (thumb && src.thumbnail) {
+              thumb.style.backgroundImage = '';
+              thumb.style.backgroundImage = 'url(' + src.thumbnail + ')';
+            }
+          });
+        } catch (_) {}
+      }
+
+      // ── Source buttons ───────────────────────────────────────────────────
+      for (const src of sources) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        Object.assign(item.style, {
+          display: 'flex', flexDirection: 'column', alignItems: 'stretch',
+          background: '#222', border: '1px solid rgba(255,255,255,0.06)',
+          padding: '8px', borderRadius: '6px', cursor: 'pointer',
+          color: '#fff', textAlign: 'left'
+        });
+
+        const thumb = document.createElement('div');
+        thumb.className = 'ss-thumb';
+        Object.assign(thumb.style, {
+          height: '120px', marginBottom: '8px', background: '#333',
+          borderRadius: '4px', backgroundSize: 'cover', backgroundPosition: 'center'
+        });
+        if (src.thumbnail) thumb.style.backgroundImage = 'url(' + src.thumbnail + ')';
+
+        const label = document.createElement('div');
+        label.textContent = src.name || ('Source ' + src.id);
+        Object.assign(label.style, {
+          fontSize: '13px', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis'
+        });
+
+        item.appendChild(thumb);
+        item.appendChild(label);
+
+        item.onclick = async () => {
+          cleanup();
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: src.id,
+                  maxWidth: window.screen.width,
+                  maxHeight: window.screen.height
+                }
+              }
+            });
+            resolve(stream);
+          } catch (err) {
+            if (origGetDisplayMedia) {
+              try { resolve(await origGetDisplayMedia(constraints)); } catch (e) { reject(e); }
+            } else {
+              reject(err);
+            }
+          }
+        };
+
+        grid.appendChild(item);
+      }
+
+      // ── Cancel button ────────────────────────────────────────────────────
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      Object.assign(cancelBtn.style, {
+        marginTop: '12px', padding: '8px 14px', background: '#333',
+        border: '1px solid rgba(255,255,255,0.06)', color: '#fff',
+        borderRadius: '6px', cursor: 'pointer'
+      });
+      cancelBtn.onclick = () => {
+        cleanup();
+        reject(new DOMException('User cancelled', 'AbortError'));
+      };
+
+      card.appendChild(title);
+      card.appendChild(grid);
+      card.appendChild(cancelBtn);
+      overlay.appendChild(card);
+      document.documentElement.appendChild(overlay);
+
+      updateInterval = setInterval(refreshThumbnails, 5000);
+    });
+  };
+})();
+`;
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -28,72 +207,79 @@ function createWindow() {
     backgroundColor: '#1e1e1e'
   });
 
-  // Remove the application menu
   mainWindow.setMenu(null);
-
   mainWindow.loadFile('renderer/index.html');
 
-  // Get saved servers
   const servers = store.get('servers', []);
-  
-  // Send servers to renderer
+
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.send('servers-loaded', servers);
+
+    // On first launch, show the permissions setup screen
+    if (!store.get('permissionsConfigured', false)) {
+      mainWindow.webContents.send('show-permissions-setup');
+    }
   });
+}
+
+function buildPermissionHandlers(ses) {
+  // Called at request time so changes to stored permissions take effect immediately
+  // without needing to recreate sessions.
+
+  ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const perms = getPermissions();
+
+    if (permission === 'geolocation') return callback(false);
+
+    if (permission === 'notifications') return callback(perms.notifications);
+
+    if (permission === 'media') {
+      const types = details.mediaTypes || [];
+      if (types.length === 0) return callback(false);
+      const allowed = types.every(t => {
+        if (t === 'audio') return perms.audio;
+        if (t === 'video') return perms.video;
+        return false;
+      });
+      return callback(allowed);
+    }
+
+    // Deny everything else (midi, midiSysex, openExternal, fullscreen, etc.)
+    callback(false);
+  });
+
+  ses.setPermissionCheckHandler((webContents, permission) => {
+    const perms = getPermissions();
+    if (permission === 'geolocation') return false;
+    if (permission === 'notifications') return perms.notifications;
+    if (permission === 'media') return perms.audio || perms.video;
+    return false;
+  });
+
+  if (typeof ses.setDisplayCapturePermissionHandler === 'function') {
+    ses.setDisplayCapturePermissionHandler(() => {
+      return getPermissions().screenCapture;
+    });
+  }
 }
 
 function createServerView(server) {
   const viewId = server.id;
-  
-  // Check if view already exists
+
   if (serverViews.has(viewId)) {
     return serverViews.get(viewId);
   }
 
-  // Create a new session partition for this server
   const partition = `persist:server-${viewId}`;
   const ses = session.fromPartition(partition);
 
-  // Set permissions handler for media access
-  ses.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = [
-      'media',
-      'mediaKeySystem',
-      'geolocation',
-      'notifications',
-      'midi',
-      'midiSysex',
-      'openExternal',
-      'fullscreen'
-    ];
-    
-    if (allowedPermissions.includes(permission)) {
-      callback(true);
-    } else {
-      callback(false);
-    }
-  });
-
-  // Handle display capture permission (for screen sharing) - Electron 30+
-  if (typeof ses.setDisplayCapturePermissionHandler === 'function') {
-    ses.setDisplayCapturePermissionHandler(() => {
-      return true;
-    });
-  }
-
-  // Fallback permission check handler
-  ses.setPermissionCheckHandler((webContents, permission) => {
-    if (permission === 'media') {
-      return true;
-    }
-    return true;
-  });
+  buildPermissionHandlers(ses);
 
   const view = new BrowserView({
     webPreferences: {
       partition: partition,
       nodeIntegration: false,
-      contextIsolation: false, // Need to disable for screen sharing injection
+      contextIsolation: true,   // Always on — screen sharing works via executeJavaScript injection
       webSecurity: true,
       allowRunningInsecureContent: false,
       enableRemoteModule: false,
@@ -104,94 +290,64 @@ function createServerView(server) {
   });
 
   view.webContents.loadURL(server.url);
-  
-  // Enable right-click context menu in webview
+
+  // Inject the getDisplayMedia override into the page's main world on every load.
+  // This is safe: the injected code only calls window.__sharkordBridge.getSources()
+  // which is the contextBridge endpoint from view-preload.js — ipcRenderer is never
+  // reachable from the page context.
+  view.webContents.on('did-finish-load', () => {
+    view.webContents.executeJavaScript(SCREEN_SHARE_INJECTION).catch(() => {});
+  });
+
+  // Right-click context menu
   view.webContents.on('context-menu', (event, params) => {
     const menuTemplate = [];
-    
-    // Add "Back" and "Forward" navigation items if applicable
+
     if (params.editFlags.canUndo || params.editFlags.canRedo) {
-      if (params.editFlags.canUndo) {
-        menuTemplate.push({ label: 'Undo', role: 'undo' });
-      }
-      if (params.editFlags.canRedo) {
-        menuTemplate.push({ label: 'Redo', role: 'redo' });
-      }
+      if (params.editFlags.canUndo) menuTemplate.push({ label: 'Undo', role: 'undo' });
+      if (params.editFlags.canRedo) menuTemplate.push({ label: 'Redo', role: 'redo' });
       menuTemplate.push({ type: 'separator' });
     }
-    
-    // Add cut/copy/paste for editable content and text selection
+
     if (params.isEditable) {
       menuTemplate.push(
-        { label: 'Cut', role: 'cut', enabled: params.editFlags.canCut },
-        { label: 'Copy', role: 'copy', enabled: params.editFlags.canCopy },
+        { label: 'Cut',   role: 'cut',   enabled: params.editFlags.canCut },
+        { label: 'Copy',  role: 'copy',  enabled: params.editFlags.canCopy },
         { label: 'Paste', role: 'paste', enabled: params.editFlags.canPaste }
       );
-      if (params.editFlags.canDelete) {
-        menuTemplate.push({ label: 'Delete', role: 'delete' });
-      }
-      menuTemplate.push(
-        { type: 'separator' },
-        { label: 'Select All', role: 'selectAll' }
-      );
+      if (params.editFlags.canDelete) menuTemplate.push({ label: 'Delete', role: 'delete' });
+      menuTemplate.push({ type: 'separator' }, { label: 'Select All', role: 'selectAll' });
     } else if (params.selectionText) {
-      // For non-editable selected text
       menuTemplate.push(
         { label: 'Copy', role: 'copy' },
         { type: 'separator' },
         { label: 'Select All', role: 'selectAll' }
       );
     }
-    
-    // Add link-specific items
+
     if (params.linkURL) {
       if (menuTemplate.length > 0) menuTemplate.push({ type: 'separator' });
-      menuTemplate.push(
-        { 
-          label: 'Copy Link Address', 
-          click: () => {
-            require('electron').clipboard.writeText(params.linkURL);
-          }
-        }
-      );
+      menuTemplate.push({
+        label: 'Copy Link Address',
+        click: () => require('electron').clipboard.writeText(params.linkURL)
+      });
     }
-    
-    // Add image-specific items
+
     if (params.mediaType === 'image') {
       if (menuTemplate.length > 0) menuTemplate.push({ type: 'separator' });
       menuTemplate.push(
-        { 
-          label: 'Copy Image', 
-          click: () => {
-            view.webContents.copyImageAt(params.x, params.y);
-          }
-        },
-        { 
-          label: 'Save Image As...', 
-          click: () => {
-            view.webContents.downloadURL(params.srcURL);
-          }
-        }
+        { label: 'Copy Image',     click: () => view.webContents.copyImageAt(params.x, params.y) },
+        { label: 'Save Image As…', click: () => view.webContents.downloadURL(params.srcURL) }
       );
     }
-    
-    // Add video/audio specific items
+
     if (params.mediaType === 'video' || params.mediaType === 'audio') {
       if (menuTemplate.length > 0) menuTemplate.push({ type: 'separator' });
-      menuTemplate.push(
-        { 
-          label: 'Save As...', 
-          click: () => {
-            view.webContents.downloadURL(params.srcURL);
-          }
-        }
-      );
+      menuTemplate.push({ label: 'Save As…', click: () => view.webContents.downloadURL(params.srcURL) });
     }
-    
-    // Show the menu if there are items
+
     if (menuTemplate.length > 0) {
-      const menu = Menu.buildFromTemplate(menuTemplate);
-      menu.popup({ window: mainWindow });
+      Menu.buildFromTemplate(menuTemplate).popup({ window: mainWindow });
     }
   });
 
@@ -202,51 +358,36 @@ function createServerView(server) {
 function switchToServer(serverId) {
   const servers = store.get('servers', []);
   const server = servers.find(s => s.id === serverId);
-  
   if (!server) return;
 
-  // Hide current view
-  if (currentView) {
-    mainWindow.removeBrowserView(currentView);
-  }
+  if (currentView) mainWindow.removeBrowserView(currentView);
 
-  // Get or create view for this server
   const view = createServerView(server);
-  
-  // Set bounds for the view (leaving space for sidebar)
+
   const sidebarWidth = 72;
   const contentBounds = mainWindow.getContentBounds();
   view.setBounds({
     x: sidebarWidth,
     y: 0,
-    width: contentBounds.width - sidebarWidth,
+    width:  contentBounds.width  - sidebarWidth,
     height: contentBounds.height
   });
 
   mainWindow.addBrowserView(view);
   currentView = view;
-  
-  // Focus the view so input works
   view.webContents.focus();
 
-  // Adjust view on window resize
-  const resizeHandler = () => {
-    if (currentView === view) {
-      const contentBounds = mainWindow.getContentBounds();
-      view.setBounds({
-        x: sidebarWidth,
-        y: 0,
-        width: contentBounds.width - sidebarWidth,
-        height: contentBounds.height
-      });
-    }
-  };
-  
   mainWindow.removeAllListeners('resize');
-  mainWindow.on('resize', resizeHandler);
+  mainWindow.on('resize', () => {
+    if (currentView === view) {
+      const b = mainWindow.getContentBounds();
+      view.setBounds({ x: sidebarWidth, y: 0, width: b.width - sidebarWidth, height: b.height });
+    }
+  });
 }
 
-// IPC Handlers
+// ── IPC Handlers ─────────────────────────────────────────────────────────────
+
 ipcMain.on('add-server', (event, serverData) => {
   const servers = store.get('servers', []);
   const newServer = {
@@ -255,18 +396,16 @@ ipcMain.on('add-server', (event, serverData) => {
     url: serverData.url,
     icon: serverData.icon || null
   };
-  
-  // Save custom icon if provided
+
   if (serverData.iconData) {
     const iconPath = path.join(iconsDir, `${newServer.id}.png`);
     const base64Data = serverData.iconData.replace(/^data:image\/\w+;base64,/, '');
     fs.writeFileSync(iconPath, Buffer.from(base64Data, 'base64'));
     newServer.icon = iconPath;
   }
-  
+
   servers.push(newServer);
   store.set('servers', servers);
-  
   event.reply('server-added', newServer);
   event.reply('servers-loaded', servers);
 });
@@ -274,9 +413,8 @@ ipcMain.on('add-server', (event, serverData) => {
 ipcMain.on('update-server', (event, serverId, updates) => {
   const servers = store.get('servers', []);
   const serverIndex = servers.findIndex(s => s.id === serverId);
-  
+
   if (serverIndex !== -1) {
-    // If removing icon explicitly
     if (updates.removeIcon) {
       if (servers[serverIndex].icon && fs.existsSync(servers[serverIndex].icon)) {
         fs.unlinkSync(servers[serverIndex].icon);
@@ -284,22 +422,18 @@ ipcMain.on('update-server', (event, serverId, updates) => {
       servers[serverIndex].icon = null;
       delete updates.removeIcon;
     }
-    
-    // If updating icon with new data, delete old icon file and save new one
+
     if (updates.iconData) {
-      // Delete old icon if it exists
       if (servers[serverIndex].icon && fs.existsSync(servers[serverIndex].icon)) {
         fs.unlinkSync(servers[serverIndex].icon);
       }
-      
-      // Save new icon
       const iconPath = path.join(iconsDir, `${serverId}.png`);
       const base64Data = updates.iconData.replace(/^data:image\/\w+;base64,/, '');
       fs.writeFileSync(iconPath, Buffer.from(base64Data, 'base64'));
       updates.icon = iconPath;
       delete updates.iconData;
     }
-    
+
     servers[serverIndex] = { ...servers[serverIndex], ...updates };
     store.set('servers', servers);
     event.reply('servers-loaded', servers);
@@ -314,16 +448,14 @@ ipcMain.on('reorder-servers', (event, newOrder) => {
 ipcMain.on('remove-server', (event, serverId) => {
   const servers = store.get('servers', []);
   const server = servers.find(s => s.id === serverId);
-  
-  // Delete icon file if it exists
+
   if (server && server.icon && fs.existsSync(server.icon)) {
     fs.unlinkSync(server.icon);
   }
-  
+
   const filteredServers = servers.filter(s => s.id !== serverId);
   store.set('servers', filteredServers);
-  
-  // Remove the view if it exists
+
   if (serverViews.has(serverId)) {
     const view = serverViews.get(serverId);
     if (currentView === view) {
@@ -332,58 +464,34 @@ ipcMain.on('remove-server', (event, serverId) => {
     }
     serverViews.delete(serverId);
   }
-  
+
   event.reply('server-removed', serverId);
   event.reply('servers-loaded', filteredServers);
 });
 
 ipcMain.on('refresh-server', (event, serverId) => {
-  if (serverViews.has(serverId)) {
-    const view = serverViews.get(serverId);
-    view.webContents.reload();
-  }
+  if (serverViews.has(serverId)) serverViews.get(serverId).webContents.reload();
 });
 
-ipcMain.on('switch-server', (event, serverId) => {
-  switchToServer(serverId);
-});
+ipcMain.on('switch-server', (event, serverId) => switchToServer(serverId));
 
 ipcMain.on('get-servers', (event) => {
-  const servers = store.get('servers', []);
-  event.reply('servers-loaded', servers);
+  event.reply('servers-loaded', store.get('servers', []));
 });
 
 ipcMain.on('show-server-context-menu', (event, { serverId }) => {
-  const menu = Menu.buildFromTemplate([
-    {
-      label: 'Rename Server',
-      click: () => mainWindow.webContents.send('ctx-rename-server', serverId)
-    },
-    {
-      label: 'Change Icon',
-      click: () => mainWindow.webContents.send('ctx-change-icon-server', serverId)
-    },
-    {
-      label: 'Refresh',
-      click: () => mainWindow.webContents.send('ctx-refresh-server', serverId)
-    },
+  Menu.buildFromTemplate([
+    { label: 'Rename Server', click: () => mainWindow.webContents.send('ctx-rename-server', serverId) },
+    { label: 'Change Icon',   click: () => mainWindow.webContents.send('ctx-change-icon-server', serverId) },
+    { label: 'Refresh',       click: () => mainWindow.webContents.send('ctx-refresh-server', serverId) },
     { type: 'separator' },
-    {
-      label: 'Remove Server',
-      click: () => mainWindow.webContents.send('ctx-remove-server', serverId)
-    }
-  ]);
-  menu.popup({ window: mainWindow });
+    { label: 'Remove Server', click: () => mainWindow.webContents.send('ctx-remove-server', serverId) }
+  ]).popup({ window: mainWindow });
 });
 
-// Handlers to temporarily hide/show the BrowserView so modals in the main window can appear above it.
 ipcMain.on('hide-view', () => {
   if (currentView && mainWindow) {
-    try {
-      mainWindow.removeBrowserView(currentView);
-    } catch (e) {
-      console.error('Error removing BrowserView:', e);
-    }
+    try { mainWindow.removeBrowserView(currentView); } catch (e) { console.error(e); }
   }
 });
 
@@ -391,22 +499,13 @@ ipcMain.on('show-view', () => {
   if (currentView && mainWindow) {
     try {
       mainWindow.addBrowserView(currentView);
-      // restore bounds - keep the view filling the right side (beside sidebar)
       const sidebarWidth = 72;
-      const contentBounds = mainWindow.getContentBounds();
-      currentView.setBounds({ 
-        x: sidebarWidth, 
-        y: 0, 
-        width: contentBounds.width - sidebarWidth, 
-        height: contentBounds.height 
-      });
-    } catch (e) {
-      console.error('Error adding BrowserView back:', e);
-    }
+      const b = mainWindow.getContentBounds();
+      currentView.setBounds({ x: sidebarWidth, y: 0, width: b.width - sidebarWidth, height: b.height });
+    } catch (e) { console.error(e); }
   }
 });
 
-// Load icon file data for renderer
 ipcMain.handle('load-icon', async (event, iconPath) => {
   if (iconPath && fs.existsSync(iconPath)) {
     const data = fs.readFileSync(iconPath);
@@ -415,48 +514,43 @@ ipcMain.handle('load-icon', async (event, iconPath) => {
   return null;
 });
 
-// Handle screen sharing sources request
 ipcMain.handle('get-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['window', 'screen'],
     thumbnailSize: { width: 300, height: 200 }
   });
-  
-  // Convert thumbnails to data URLs
-  return sources.map(source => ({
-    id: source.id,
-    name: source.name,
-    thumbnail: source.thumbnail.toDataURL()
-  }));
+  return sources.map(s => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL() }));
 });
 
-// Handle desktop capturer for BrowserViews
 ipcMain.handle('DESKTOP_CAPTURER_GET_SOURCES', async (event, opts) => {
   const sources = await desktopCapturer.getSources({
     ...opts,
     thumbnailSize: { width: 300, height: 200 }
   });
-  
-  // Convert thumbnails to data URLs for the picker
-  return sources.map(source => ({
-    id: source.id,
-    name: source.name,
-    thumbnail: source.thumbnail.toDataURL()
-  }));
+  return sources.map(s => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL() }));
 });
+
+// ── Permission IPC ────────────────────────────────────────────────────────────
+
+ipcMain.handle('get-permissions', () => ({
+  configured: store.get('permissionsConfigured', false),
+  permissions: getPermissions()
+}));
+
+ipcMain.on('set-permissions', (event, permissions) => {
+  store.set('permissions', { ...DEFAULT_PERMISSIONS, ...permissions });
+  store.set('permissionsConfigured', true);
+});
+
+// ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   createWindow();
-
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });

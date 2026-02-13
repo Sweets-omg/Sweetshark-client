@@ -372,3 +372,108 @@ body {
 .context-menu-item svg {
   flex-shrink: 0;
 }
+
+/* ── Permissions Modal ───────────────────────────────────────────────────── */
+
+.permissions-modal-content {
+  width: 480px;
+}
+
+.permissions-intro {
+  font-size: 14px;
+  color: #b9bbbe;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.permission-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.permission-row:last-child {
+  border-bottom: none;
+}
+
+.permission-row--disabled {
+  opacity: 0.45;
+}
+
+.permission-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.permission-icon {
+  font-size: 22px;
+  width: 32px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.permission-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 2px;
+}
+
+.permission-desc {
+  font-size: 12px;
+  color: #72767d;
+  line-height: 1.4;
+}
+
+/* Toggle switch */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.toggle--disabled {
+  cursor: not-allowed;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: #4a4a4a;
+  border-radius: 24px;
+  transition: background 0.2s;
+}
+
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+.toggle input:checked + .toggle-track {
+  background: #5865f2;
+}
+
+.toggle input:checked + .toggle-track::after {
+  transform: translateX(20px);
+}

@@ -35,6 +35,94 @@
     </div>
   </div>
 
+  <!-- ── Permissions Setup Modal (first launch only, no close button) ────── -->
+  <div class="modal" id="permissionsModal">
+    <div class="modal-content permissions-modal-content">
+      <div class="modal-header">
+        <h2>App Permissions</h2>
+      </div>
+      <div class="modal-body">
+        <p class="permissions-intro">
+          Choose which permissions Sharkord servers are allowed to request.
+          You can change these later in Settings.
+        </p>
+
+        <div class="permission-row">
+          <div class="permission-info">
+            <span class="permission-icon">🔔</span>
+            <div>
+              <div class="permission-name">Notifications</div>
+              <div class="permission-desc">Allow servers to send desktop notifications</div>
+            </div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="perm-notifications">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="permission-row">
+          <div class="permission-info">
+            <span class="permission-icon">🖥️</span>
+            <div>
+              <div class="permission-name">Screen Capture</div>
+              <div class="permission-desc">Allow servers to ask you to share your screen</div>
+            </div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="perm-screenCapture">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="permission-row">
+          <div class="permission-info">
+            <span class="permission-icon">🎤</span>
+            <div>
+              <div class="permission-name">Microphone</div>
+              <div class="permission-desc">Allow servers to access your microphone</div>
+            </div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="perm-audio">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="permission-row">
+          <div class="permission-info">
+            <span class="permission-icon">📷</span>
+            <div>
+              <div class="permission-name">Camera</div>
+              <div class="permission-desc">Allow servers to access your webcam</div>
+            </div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="perm-video">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="permission-row permission-row--disabled">
+          <div class="permission-info">
+            <span class="permission-icon">📍</span>
+            <div>
+              <div class="permission-name">Location</div>
+              <div class="permission-desc">Always disabled — servers cannot access your location</div>
+            </div>
+          </div>
+          <label class="toggle toggle--disabled">
+            <input type="checkbox" disabled>
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="primary-button" onclick="savePermissions()">Save &amp; Continue</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Server Modal -->
   <div class="modal" id="addServerModal">
     <div class="modal-content">
