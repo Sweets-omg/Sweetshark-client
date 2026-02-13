@@ -5,7 +5,7 @@
 
 **ps. I only tested this on windows, I have no idea if it works on any other platform.**
 
-# A multi-server desktop client for [Sharkord](https://github.com/Sharkord/sharkord) built with Electron. Manage and connect to multiple Sharkord servers simultaneously with a Discord-like interface.
+# A multi-server desktop client for [Sharkord](https://github.com/Sharkord/sharkord) built with Electron. Manage and connect to multiple Sharkord servers simultaneously with a familiar interface.
 
 ## Features
 
