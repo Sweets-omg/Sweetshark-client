@@ -72,7 +72,6 @@ If you want a single `.exe` file you can run from anywhere — USB drive, Downlo
 | Output | An installer `.exe` that installs the app | A single `.exe` you run directly |
 | Requires installation | Yes | No |
 | Can move/share the file | Not easily | Yes, it's self-contained |
-| App data (servers, icons) | Stored in `%AppData%` | Stored next to the `.exe` |
 
 ### How to build it
 
