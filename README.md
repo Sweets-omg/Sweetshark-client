@@ -18,6 +18,10 @@
 - 🔒 **Permission Control** - Configure app-wide permissions for notifications, screen capture, microphone, and camera
 - 💾 **Persistent Storage** - All your servers and settings are saved automatically
 
+## Current know issues
+
+- Can't copy invite links from server admin page
+
 ## Requirements
 
 - **Node.js** 16.x or higher
