@@ -289,7 +289,21 @@ function createServerView(server) {
     }
   });
 
-  view.webContents.loadURL(server.url);
+  // Use initialUrl (with invite) for first load, then use clean url for future loads
+  const urlToLoad = server.initialUrl || server.url;
+  view.webContents.loadURL(urlToLoad);
+
+  // Clear initialUrl after first successful load so future loads use clean URL
+  if (server.initialUrl) {
+    view.webContents.once('did-finish-load', () => {
+      const servers = store.get('servers', []);
+      const serverIndex = servers.findIndex(s => s.id === server.id);
+      if (serverIndex !== -1 && servers[serverIndex].initialUrl) {
+        delete servers[serverIndex].initialUrl;
+        store.set('servers', servers);
+      }
+    });
+  }
 
   // Inject the getDisplayMedia override into the page's main world on every load.
   // This is safe: the injected code only calls window.__sharkordBridge.getSources()
@@ -360,9 +374,35 @@ function switchToServer(serverId) {
   const server = servers.find(s => s.id === serverId);
   if (!server) return;
 
-  if (currentView) mainWindow.removeBrowserView(currentView);
+  // Show loading screen
+  mainWindow.webContents.send('show-loading');
 
-  const view = createServerView(server);
+  // Before switching, check if the CURRENT server should be kept loaded
+  if (currentView) {
+    const currentServerId = Array.from(serverViews.entries()).find(([id, view]) => view === currentView)?.[0];
+    if (currentServerId) {
+      const currentServer = servers.find(s => s.id === currentServerId);
+      // If current server has keepLoaded=false, destroy it
+      if (currentServer && currentServer.keepLoaded === false) {
+        try {
+          currentView.webContents.destroy();
+        } catch (e) {
+          console.error('Error destroying view:', e);
+        }
+        serverViews.delete(currentServerId);
+      }
+    }
+    // Remove from display regardless
+    mainWindow.removeBrowserView(currentView);
+  }
+
+  // Check if view exists for the target server
+  let view;
+  if (serverViews.has(serverId)) {
+    view = serverViews.get(serverId);
+  } else {
+    view = createServerView(server);
+  }
 
   const sidebarWidth = 72;
   const contentBounds = mainWindow.getContentBounds();
@@ -376,6 +416,16 @@ function switchToServer(serverId) {
   mainWindow.addBrowserView(view);
   currentView = view;
   view.webContents.focus();
+
+  // Hide loading screen when page loads
+  view.webContents.once('did-finish-load', () => {
+    mainWindow.webContents.send('hide-loading');
+  });
+
+  // Also hide on fail
+  view.webContents.once('did-fail-load', () => {
+    mainWindow.webContents.send('hide-loading');
+  });
 
   mainWindow.removeAllListeners('resize');
   mainWindow.on('resize', () => {
@@ -393,8 +443,10 @@ ipcMain.on('add-server', (event, serverData) => {
   const newServer = {
     id: Date.now().toString(),
     name: serverData.name,
-    url: serverData.url,
-    icon: serverData.icon || null
+    url: serverData.url, // This is the clean URL without invite
+    icon: serverData.icon || null,
+    keepLoaded: true, // default to keeping servers loaded
+    initialUrl: serverData.initialUrl || serverData.url // For first load with invite
   };
 
   if (serverData.iconData) {
@@ -449,18 +501,40 @@ ipcMain.on('remove-server', (event, serverId) => {
   const servers = store.get('servers', []);
   const server = servers.find(s => s.id === serverId);
 
+  // Delete server icon if it exists
   if (server && server.icon && fs.existsSync(server.icon)) {
-    fs.unlinkSync(server.icon);
+    try {
+      fs.unlinkSync(server.icon);
+    } catch (e) {
+      console.error('Error deleting icon:', e);
+    }
+  }
+
+  // Clean up any other server-specific files
+  // (In case there are cached files or session data)
+  const serverDataDir = path.join(app.getPath('userData'), 'server-data', serverId);
+  if (fs.existsSync(serverDataDir)) {
+    try {
+      fs.rmSync(serverDataDir, { recursive: true, force: true });
+    } catch (e) {
+      console.error('Error deleting server data:', e);
+    }
   }
 
   const filteredServers = servers.filter(s => s.id !== serverId);
   store.set('servers', filteredServers);
 
+  // Destroy and remove the browser view
   if (serverViews.has(serverId)) {
     const view = serverViews.get(serverId);
     if (currentView === view) {
       mainWindow.removeBrowserView(view);
       currentView = null;
+    }
+    try {
+      view.webContents.destroy();
+    } catch (e) {
+      console.error('Error destroying view:', e);
     }
     serverViews.delete(serverId);
   }
@@ -480,13 +554,36 @@ ipcMain.on('get-servers', (event) => {
 });
 
 ipcMain.on('show-server-context-menu', (event, { serverId }) => {
+  const servers = store.get('servers', []);
+  const server = servers.find(s => s.id === serverId);
+  const keepLoaded = server?.keepLoaded !== false; // default true
+
   Menu.buildFromTemplate([
     { label: 'Rename Server', click: () => mainWindow.webContents.send('ctx-rename-server', serverId) },
     { label: 'Change Icon',   click: () => mainWindow.webContents.send('ctx-change-icon-server', serverId) },
     { label: 'Refresh',       click: () => mainWindow.webContents.send('ctx-refresh-server', serverId) },
     { type: 'separator' },
+    { 
+      label: 'Keep Server Loaded', 
+      type: 'checkbox',
+      checked: keepLoaded,
+      click: () => mainWindow.webContents.send('ctx-toggle-keep-loaded', serverId)
+    },
+    { type: 'separator' },
     { label: 'Remove Server', click: () => mainWindow.webContents.send('ctx-remove-server', serverId) }
   ]).popup({ window: mainWindow });
+});
+
+ipcMain.on('toggle-keep-loaded', (event, serverId) => {
+  const servers = store.get('servers', []);
+  const serverIndex = servers.findIndex(s => s.id === serverId);
+  
+  if (serverIndex !== -1) {
+    const currentValue = servers[serverIndex].keepLoaded !== false; // default true
+    servers[serverIndex].keepLoaded = !currentValue;
+    store.set('servers', servers);
+    event.reply('servers-loaded', servers);
+  }
 });
 
 ipcMain.on('hide-view', () => {

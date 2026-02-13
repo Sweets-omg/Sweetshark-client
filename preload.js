@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   switchServer:   (serverId)            => ipcRenderer.send('switch-server', serverId),
   getServers:     ()                    => ipcRenderer.send('get-servers'),
   loadIcon:       (iconPath)            => ipcRenderer.invoke('load-icon', iconPath),
+  toggleKeepLoaded: (serverId)          => ipcRenderer.send('toggle-keep-loaded', serverId),
 
   onServersLoaded:  (cb) => ipcRenderer.on('servers-loaded',  (_, s)  => cb(s)),
   onServerAdded:    (cb) => ipcRenderer.on('server-added',    (_, s)  => cb(s)),
@@ -19,9 +20,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onCtxChangeIconServer:(cb) => ipcRenderer.on('ctx-change-icon-server',(_, id) => cb(id)),
   onCtxRefreshServer:   (cb) => ipcRenderer.on('ctx-refresh-server',   (_, id) => cb(id)),
   onCtxRemoveServer:    (cb) => ipcRenderer.on('ctx-remove-server',    (_, id) => cb(id)),
+  onCtxToggleKeepLoaded:(cb) => ipcRenderer.on('ctx-toggle-keep-loaded', (_, id) => cb(id)),
 
   hideView: () => ipcRenderer.send('hide-view'),
   showView: () => ipcRenderer.send('show-view'),
+
+  onShowLoading: (cb) => ipcRenderer.on('show-loading', () => cb()),
+  onHideLoading: (cb) => ipcRenderer.on('hide-loading', () => cb()),
 
   getSources: (opts) =>
     ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', opts || { types: ['window', 'screen'] }),

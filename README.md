@@ -1,151 +1,172 @@
 # Sweetshark Sharkord Client
 
 # DISCLAIMER: ALL OF THIS IS AI GENERATED. I TAKE NO RESPONSIBILITY FOR ANYTHING THAT HAPPENS WHEN YOU USE THIS CLIENT.
-
 # USE AT YOUR OWN RISK.
 
-ps. I only tested this on windows, I have no idea if it works on any other platform.
+**ps. I only tested this on windows, I have no idea if it works on any other platform.**
 
-# A multi-server Electron client for Sharkord with Discord-inspired UI.
+A multi-server desktop client for [Sharkord](https://github.com/Sharkord/sharkord) built with Electron. Manage and connect to multiple Sharkord servers simultaneously with a Discord-like interface.
 
 ## Features
 
-✨ **Multi-Server Support** - Connect to multiple Sharkord servers and switch between them instantly  
-🔒 **Session Management** - Separate cookies and login sessions for each server  
-💾 **Credential Saving** - Automatically saves login credentials when you check "save credentials"  
-🎨 **Discord-Style UI** - Familiar sidebar navigation with server icons  
-🚀 **Full Feature Support** - File uploads, voice chat, video chat, screen sharing all work seamlessly
+- 🖥️ **Multi-Server Support** - Connect to multiple Sharkord servers and switch between them seamlessly
+- 🎨 **Custom Server Icons** - Upload custom icons for each server or use default icons
+- 🔄 **Drag-and-Drop Reordering** - Easily reorder your servers by dragging them in the sidebar
+- 🎯 **Server Management** - Right-click servers to rename, change icons, refresh, or remove them
+- 🔧 **Keep Loaded Option** - Toggle whether servers stay loaded in memory when inactive
+- 📺 **Screen Sharing** - Built-in screen capture with a custom picker for sharing your screen or windows
+- 🔒 **Permission Control** - Configure app-wide permissions for notifications, screen capture, microphone, and camera
+- 💾 **Persistent Storage** - All your servers and settings are saved automatically
 
-## Prerequisites
+## Requirements
 
-- Node.js (v18 or higher)
-- npm or yarn
+- **Node.js** 16.x or higher
+- **npm** or **yarn** package manager
+- Windows, macOS, or Linux (only tested on Windows)
 
-## Installation & Building
+## Installation
 
-### 1. Install Dependencies
+### Build from Source
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/sweetshark-client.git
+   cd sweetshark-client
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Run in development mode**
+   ```bash
+   npm start
+   ```
+
+## Building
+
+### Build for Windows
+
+```bash
+# Build installer and portable version
+npm run build:win
+
+# Build only portable version
+npm run build:win-portable
+```
+
+The built files will be in the `dist` folder:
+- **NSIS Installer**: `dist/Sweetshark Client Setup X.X.X.exe`
+- **Portable**: `dist/Sweetshark Client X.X.X.exe`
+
+## Usage
+
+### First Launch
+
+1. When you first launch Sweetshark Client, you'll be prompted to configure app permissions
+2. Choose which permissions you want to grant (notifications, screen capture, microphone, camera)
+3. These settings CAN NOT be changed later, it's more of a disclaimer of what permissions the app will use.
+
+### Adding a Server
+
+1. Click the **+** button in the sidebar
+2. Fill in the server details:
+   - **Server Name**: A friendly name for your server (e.g., "My Gaming Server")
+   - **Server URL**: The full URL of your Sharkord server (e.g., `http://localhost:4991` or `https://myserver.com`)
+   - **Custom Icon** (optional): Upload an image to use as the server icon
+3. Click **Add Server**
+
+The client will automatically handle Sharkord invite links - just paste the full URL including the invite code.
+
+### Managing Servers
+
+**Switch Servers**: Click on any server icon in the sidebar
+
+**Reorder Servers**: Drag and drop server icons to reorder them
+
+**Server Context Menu** (Right-click on a server icon):
+- **Rename Server** - Change the server's display name
+- **Change Icon** - Upload a new icon or remove the current one
+- **Refresh** - Reload the server's page
+- **Keep Server Loaded** - Toggle whether the server stays loaded in memory when inactive (enabled by default)
+- **Remove Server** - Delete the server from your list
+
+### Screen Sharing
+
+When a Sharkord server requests screen sharing:
+1. A custom picker will appear showing all available screens and windows
+2. Thumbnails update every 5 seconds
+3. Click on the screen/window you want to share
+4. Click **Cancel** to abort the screen share
+
+### Stored Data Location
+
+Server data and settings are stored in:
+- **Windows**: `%APPDATA%\sweetshark-client\`
+
+### What's Stored
+
+- `config.json` - App settings and permissions
+- `server-icons/` - Custom server icons
+- Server list and configurations
+
+## Technical Details
+
+### Built With
+
+- **Electron** v28.0.0 - Desktop application framework
+- **electron-store** - Persistent data storage
+- **electron-builder** - Application packaging
+
+## Troubleshooting
+
+### Server won't load
+- Verify the server URL is correct and includes `http://` or `https://`
+- Check that the Sharkord server is running and accessible
+- Try refreshing the server (right-click server icon → Refresh)
+
+### Screen sharing doesn't work
+- Make sure Screen Capture permission was enabled
+- Try restarting the application
+
+### Icons not displaying
+- Supported formats: PNG, JPG, JPEG, GIF, WEBP
+- Try using a smaller image file
+
+## Development
+
+### Prerequisites for Development
 
 ```bash
 npm install
 ```
 
-### 2. Run in Development Mode
+### Development Mode
 
 ```bash
 npm start
 ```
 
-### 3. Build Executables
+This will launch the app in development mode with hot reload.
 
-Build for your current platform:
+### Project Dependencies
 
-**Windows:**
-```bash
-npm run build:win
-```
+**Production:**
+- electron-store ^8.1.0
 
-**macOS:**
-```bash
-npm run build:mac
-```
-
-**Linux:**
-```bash
-npm run build:linux
-```
-
-**All platforms:**
-```bash
-npm run build:all
-```
-
-Builds will be located in the `dist/` folder.
-
-## Building a Standalone Portable .exe (No Installation Required)
-
-If you want a single `.exe` file you can run from anywhere — USB drive, Downloads folder, anywhere — without installing anything or keeping it next to a bunch of other files, use the **portable** build.
-
-### What's the difference?
-
-| | `npm run build:win` (NSIS installer) | `npm run build:win-portable` |
-|---|---|---|
-| Output | An installer `.exe` that installs the app | A single `.exe` you run directly |
-| Requires installation | Yes | No |
-| Can move/share the file | Not easily | Yes, it's self-contained |
-
-### How to build it
-
-```bash
-npm install
-npm run build:win-portable
-```
-
-The portable `.exe` will be in `dist/` and will be named something like `Sweetshark Client 1.0.0.exe`. That's the only file you need — copy it anywhere, double-click, done.
-
-> **Note:** `npm run build:win` now builds **both** the installer and the portable `.exe` at the same time, so you'll get both in `dist/` if you run that instead.
-
-
-
-### Adding a Server
-
-1. Click the **+** button at the bottom of the sidebar
-2. Enter your server name (e.g., "My Sharkord Server")
-3. Enter the server URL (e.g., `http://localhost:4991`)
-4. Click "Add Server"
-
-### Switching Between Servers
-
-Simply click on a server icon in the sidebar to switch to it.
-
-### Removing a Server
-
-Right-click on a server icon and select "Remove Server"
-
-## How It Works
-
-- **Isolated Sessions**: Each server runs in its own isolated session/partition, so your cookies and login data don't mix
-- **Persistent Storage**: Server list and credentials are stored locally using electron-store
-- **Native WebRTC**: All Sharkord features (voice, video, screen sharing) work natively through embedded webviews
-
-## Troubleshooting
-
-### Server won't load
-- Make sure the URL includes `http://` or `https://`
-- Verify the Sharkord server is running
-- Check your firewall settings
-
-### Voice/Video not working
-- Ensure your Sharkord server ports are properly configured
-- Check microphone/camera permissions in your system settings
-- Try restarting the client
-
-### Screen sharing shows black screen
-- The client now includes screen sharing support via Electron's desktopCapturer
-- It will automatically select your first available screen/window when you click share
-- If you want to pick a specific window/screen, you can use Sharkord in a regular browser
-- On macOS: Grant screen recording permission in System Preferences > Security & Privacy > Screen Recording
-- On Linux: May need `xdg-desktop-portal` installed for screen capture
-
-### Screen sharing shows "Not supported"
-- Make sure you're using the latest version of the client
-- Restart the app after adding a server
-- If issues persist, try using Sharkord in Chrome/Firefox where you get a full screen picker
-
-### Login not saving
-- Make sure to check "save credentials" on the Sharkord login page
-- Sessions are preserved per server partition
-
-## Technical Details
-
-- Built with Electron 28
-- Uses BrowserView for embedded server instances
-- Session partitioning for cookie isolation
-- electron-store for persistent data
+**Development:**
+- electron ^28.0.0
+- electron-builder ^24.9.1
 
 ## License
 
-NONE - IT'S ALL AI GENERATED.
+**NONE - IT'S ALL AI GENERATED.**
+
+This project is provided as-is with no warranty or license. Use at your own risk.
 
 ## Credits
 
-Built for [Sharkord](https://github.com/Sharkord/sharkord) - A lightweight, self-hosted communication platform.
+- Built with [Electron](https://www.electronjs.org/)
+- Created for [Sharkord](https://github.com/Sharkord/sharkord) - A lightweight, self-hosted real-time communication platform
+- Vibe-coded by Sweets-omg with AI.

@@ -58,7 +58,7 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  color: #5865f2;
+  color: #ffffff;
   font-weight: 600;
   font-size: 18px;
   user-select: none;
@@ -71,7 +71,7 @@ body {
 }
 
 .server-icon.drag-over {
-  border: 2px dashed #5865f2;
+  border: 2px dashed #4e0073;
 }
 
 .server-icon img {
@@ -93,7 +93,7 @@ body {
 
 .server-icon.active {
   border-radius: 16px;
-  background: #5865f2;
+  background: #4e0073;
   color: white;
 }
 
@@ -189,7 +189,7 @@ body {
 
 /* Buttons */
 .primary-button {
-  background: #5865f2;
+  background: #4e0073;
   color: white;
   border: none;
   padding: 12px 24px;
@@ -201,7 +201,7 @@ body {
 }
 
 .primary-button:hover {
-  background: #4752c4;
+  background: #3d005a;
 }
 
 .secondary-button {
@@ -308,7 +308,7 @@ body {
 
 .form-group input:focus {
   outline: none;
-  border-color: #5865f2;
+  border-color: #4e0073;
 }
 
 .form-group small {
@@ -471,9 +471,105 @@ body {
 }
 
 .toggle input:checked + .toggle-track {
-  background: #5865f2;
+  background: #4e0073;
 }
 
 .toggle input:checked + .toggle-track::after {
   transform: translateX(20px);
+}
+
+/* ── Loading Screen ──────────────────────────────────────────────────────── */
+
+.loading-screen {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #2e2e2e;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.loading-screen.active {
+  display: flex;
+}
+
+.loading-content {
+  text-align: center;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #3a3a3a;
+  border-top-color: #4e0073;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-content p {
+  color: #b9bbbe;
+  font-size: 14px;
+}
+
+/* ── Permissions Note ────────────────────────────────────────────────────── */
+
+.permissions-note {
+  font-size: 13px;
+  color: #f0b232;
+  background: rgba(240, 178, 50, 0.15);
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  line-height: 1.5;
+  border-left: 3px solid #f0b232;
+}
+
+.permissions-note strong {
+  color: #f0b232;
+}
+
+/* ── Context Menu Checkbox ───────────────────────────────────────────────── */
+
+.context-menu-item-with-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-menu-checkbox {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #5a5a5a;
+  border-radius: 2px;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.15s;
+}
+
+.context-menu-checkbox.checked {
+  background: #4e0073;
+  border-color: #4e0073;
+}
+
+.context-menu-checkbox.checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }

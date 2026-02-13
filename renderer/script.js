@@ -55,6 +55,14 @@ function setupEventListeners() {
     openPermissionsModal();
   });
 
+  // Loading screen handlers
+  window.electronAPI.onShowLoading(() => {
+    document.getElementById('loadingScreen').classList.add('active');
+  });
+  window.electronAPI.onHideLoading(() => {
+    document.getElementById('loadingScreen').classList.remove('active');
+  });
+
   const addBtn = document.getElementById('addServerBtn');
   if (addBtn) addBtn.onclick = openAddServerModal;
 
@@ -75,6 +83,9 @@ function setupEventListeners() {
     if (confirm('Are you sure you want to remove this server?')) {
       window.electronAPI.removeServer(id);
     }
+  });
+  window.electronAPI.onCtxToggleKeepLoaded((id) => {
+    window.electronAPI.toggleKeepLoaded(id);
   });
 
   document.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -135,9 +146,14 @@ function createServerIcon(server) {
     img.alt = server.name;
     icon.appendChild(img);
   } else {
-    icon.textContent = server.name.charAt(0).toUpperCase();
+    // Create a text node for the letter instead of using textContent
+    const letter = document.createElement('span');
+    letter.textContent = server.name.charAt(0).toUpperCase();
+    letter.style.pointerEvents = 'none'; // Make sure it doesn't block hover
+    icon.appendChild(letter);
   }
 
+  // Always add tooltip after content
   const tooltip = document.createElement('span');
   tooltip.className = 'server-name';
   tooltip.textContent = server.name;
@@ -201,7 +217,7 @@ function closeAddServerModal() {
 
 async function addServer() {
   const name = document.getElementById('serverName').value.trim();
-  const url  = document.getElementById('serverUrl').value.trim();
+  let url  = document.getElementById('serverUrl').value.trim();
   const iconInput = document.getElementById('serverIcon');
 
   if (!name || !url) { alert('Please fill in all required fields'); return; }
@@ -211,7 +227,13 @@ async function addServer() {
     return;
   }
 
-  const serverData = { name, url };
+  // Strip invite parameter from URL for storage
+  // The initial load will use the full URL with invite, but stored URL won't have it
+  const urlObj = new URL(url);
+  const inviteParam = urlObj.searchParams.get('invite');
+  const cleanUrl = url.split('?')[0]; // Remove all query parameters for storage
+
+  const serverData = { name, url: cleanUrl, initialUrl: url };
 
   if (iconInput.files && iconInput.files[0]) {
     const reader = new FileReader();

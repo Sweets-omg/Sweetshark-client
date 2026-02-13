@@ -22,6 +22,12 @@
 
     <!-- Main content area (BrowserView will be overlayed here) -->
     <div class="main-content">
+      <div class="loading-screen" id="loadingScreen">
+        <div class="loading-content">
+          <div class="spinner"></div>
+          <p>Loading server...</p>
+        </div>
+      </div>
       <div class="welcome-screen" id="welcomeScreen">
         <div class="welcome-content">
           <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -45,6 +51,9 @@
         <p class="permissions-intro">
           Choose which permissions Sharkord servers are allowed to request.
           You can change these later in Settings.
+        </p>
+        <p class="permissions-note">
+          <strong>Note:</strong> This setup screen will only appear once. Your preferences will be saved.
         </p>
 
         <div class="permission-row">
@@ -99,20 +108,6 @@
           </div>
           <label class="toggle">
             <input type="checkbox" id="perm-video">
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-
-        <div class="permission-row permission-row--disabled">
-          <div class="permission-info">
-            <span class="permission-icon">📍</span>
-            <div>
-              <div class="permission-name">Location</div>
-              <div class="permission-desc">Always disabled — servers cannot access your location</div>
-            </div>
-          </div>
-          <label class="toggle toggle--disabled">
-            <input type="checkbox" disabled>
             <span class="toggle-track"></span>
           </label>
         </div>
