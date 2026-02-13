@@ -4,7 +4,7 @@
 
 # USE AT YOUR OWN RISK.
 
-ps. I didn't even read this readme, so I have no idea what's in it. Also, I only tested this on windows. ¯\_(ツ)_/¯
+ps. I only tested this on windows, I have no idea if it works on any other platform.
 
 # A multi-server Electron client for Sharkord with Discord-inspired UI.
 
