@@ -26,173 +26,6 @@ function getPermissions() {
   return store.get('permissions', DEFAULT_PERMISSIONS);
 }
 
-// Injected into every BrowserView page (main world) to hook getDisplayMedia.
-// Uses window.__sharkordBridge.getSources() which is exposed via contextBridge
-// in view-preload.js, so ipcRenderer never touches the page context directly.
-const SCREEN_SHARE_INJECTION = `
-(function () {
-  if (!navigator.mediaDevices || !window.__sharkordBridge) return;
-
-  const origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia
-    ? navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices)
-    : null;
-
-  navigator.mediaDevices.getDisplayMedia = async function (constraints) {
-    let sources;
-    try {
-      sources = await window.__sharkordBridge.getSources();
-    } catch (err) {
-      if (origGetDisplayMedia) return origGetDisplayMedia(constraints);
-      throw err;
-    }
-
-    if (!sources || sources.length === 0) {
-      if (origGetDisplayMedia) return origGetDisplayMedia(constraints);
-      throw new Error('No screen sources available');
-    }
-
-    return new Promise((resolve, reject) => {
-      const OVERLAY_ID = '__sharkord_screenshare_picker';
-      const existing = document.getElementById(OVERLAY_ID);
-      if (existing) existing.remove();
-
-      // ── Overlay shell ────────────────────────────────────────────────────
-      const overlay = document.createElement('div');
-      overlay.id = OVERLAY_ID;
-      Object.assign(overlay.style, {
-        position: 'fixed', zIndex: '99999999', inset: '0',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.7)', color: '#fff',
-        fontFamily: 'sans-serif'
-      });
-
-      const card = document.createElement('div');
-      Object.assign(card.style, {
-        width: '900px', maxWidth: '95%', maxHeight: '85%', overflowY: 'auto',
-        background: '#111', borderRadius: '8px', padding: '16px',
-        boxSizing: 'border-box', border: '1px solid rgba(255,255,255,0.08)'
-      });
-
-      const title = document.createElement('div');
-      title.textContent = 'Choose a screen or window to share';
-      Object.assign(title.style, { fontSize: '18px', marginBottom: '12px' });
-
-      const grid = document.createElement('div');
-      Object.assign(grid.style, {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-        gap: '12px'
-      });
-
-      // ── Cleanup helpers ──────────────────────────────────────────────────
-      let updateInterval = null;
-      let closed = false;
-
-      function cleanup() {
-        closed = true;
-        if (updateInterval) clearInterval(updateInterval);
-        updateInterval = null;
-        overlay.remove();
-      }
-
-      // ── Thumbnail refresh ────────────────────────────────────────────────
-      async function refreshThumbnails() {
-        if (closed) return;
-        try {
-          const updated = await window.__sharkordBridge.getSources();
-          updated.forEach((src, i) => {
-            const item = grid.children[i];
-            if (!item) return;
-            const thumb = item.querySelector('.ss-thumb');
-            if (thumb && src.thumbnail) {
-              thumb.style.backgroundImage = '';
-              thumb.style.backgroundImage = 'url(' + src.thumbnail + ')';
-            }
-          });
-        } catch (_) {}
-      }
-
-      // ── Source buttons ───────────────────────────────────────────────────
-      for (const src of sources) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        Object.assign(item.style, {
-          display: 'flex', flexDirection: 'column', alignItems: 'stretch',
-          background: '#222', border: '1px solid rgba(255,255,255,0.06)',
-          padding: '8px', borderRadius: '6px', cursor: 'pointer',
-          color: '#fff', textAlign: 'left'
-        });
-
-        const thumb = document.createElement('div');
-        thumb.className = 'ss-thumb';
-        Object.assign(thumb.style, {
-          height: '120px', marginBottom: '8px', background: '#333',
-          borderRadius: '4px', backgroundSize: 'cover', backgroundPosition: 'center'
-        });
-        if (src.thumbnail) thumb.style.backgroundImage = 'url(' + src.thumbnail + ')';
-
-        const label = document.createElement('div');
-        label.textContent = src.name || ('Source ' + src.id);
-        Object.assign(label.style, {
-          fontSize: '13px', whiteSpace: 'nowrap',
-          overflow: 'hidden', textOverflow: 'ellipsis'
-        });
-
-        item.appendChild(thumb);
-        item.appendChild(label);
-
-        item.onclick = async () => {
-          cleanup();
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              audio: false,
-              video: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: src.id,
-                  maxWidth: window.screen.width,
-                  maxHeight: window.screen.height
-                }
-              }
-            });
-            resolve(stream);
-          } catch (err) {
-            if (origGetDisplayMedia) {
-              try { resolve(await origGetDisplayMedia(constraints)); } catch (e) { reject(e); }
-            } else {
-              reject(err);
-            }
-          }
-        };
-
-        grid.appendChild(item);
-      }
-
-      // ── Cancel button ────────────────────────────────────────────────────
-      const cancelBtn = document.createElement('button');
-      cancelBtn.textContent = 'Cancel';
-      Object.assign(cancelBtn.style, {
-        marginTop: '12px', padding: '8px 14px', background: '#333',
-        border: '1px solid rgba(255,255,255,0.06)', color: '#fff',
-        borderRadius: '6px', cursor: 'pointer'
-      });
-      cancelBtn.onclick = () => {
-        cleanup();
-        reject(new DOMException('User cancelled', 'AbortError'));
-      };
-
-      card.appendChild(title);
-      card.appendChild(grid);
-      card.appendChild(cancelBtn);
-      overlay.appendChild(card);
-      document.documentElement.appendChild(overlay);
-
-      updateInterval = setInterval(refreshThumbnails, 5000);
-    });
-  };
-})();
-`;
-
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -235,10 +68,13 @@ function buildPermissionHandlers(ses) {
 
     if (permission === 'media') {
       const types = details.mediaTypes || [];
-      if (types.length === 0) return callback(false);
+      // When getUserMedia is called with chromeMediaSource:'desktop', Electron
+      // does not populate mediaTypes — the array is empty.  Allow it if
+      // screenCapture is enabled rather than blindly denying.
+      if (types.length === 0) return callback(perms.screenCapture || perms.audio || perms.video);
       const allowed = types.every(t => {
         if (t === 'audio') return perms.audio;
-        if (t === 'video') return perms.video;
+        if (t === 'video') return perms.video || perms.screenCapture;
         return false;
       });
       return callback(allowed);
@@ -252,7 +88,7 @@ function buildPermissionHandlers(ses) {
     const perms = getPermissions();
     if (permission === 'geolocation') return false;
     if (permission === 'notifications') return perms.notifications;
-    if (permission === 'media') return perms.audio || perms.video;
+    if (permission === 'media') return perms.audio || perms.video || perms.screenCapture;
     return false;
   });
 
@@ -279,7 +115,7 @@ function createServerView(server) {
     webPreferences: {
       partition: partition,
       nodeIntegration: false,
-      contextIsolation: true,   // Always on — screen sharing works via executeJavaScript injection
+      contextIsolation: false,  // Must be false so view-preload.js runs in page context for screen sharing
       webSecurity: true,
       allowRunningInsecureContent: false,
       enableRemoteModule: false,
@@ -304,14 +140,6 @@ function createServerView(server) {
       }
     });
   }
-
-  // Inject the getDisplayMedia override into the page's main world on every load.
-  // This is safe: the injected code only calls window.__sharkordBridge.getSources()
-  // which is the contextBridge endpoint from view-preload.js — ipcRenderer is never
-  // reachable from the page context.
-  view.webContents.on('did-finish-load', () => {
-    view.webContents.executeJavaScript(SCREEN_SHARE_INJECTION).catch(() => {});
-  });
 
   // Right-click context menu
   view.webContents.on('context-menu', (event, params) => {
