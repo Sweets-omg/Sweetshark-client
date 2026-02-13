@@ -20,7 +20,8 @@
 
 ## Current know issues
 
-- Can't copy invite links from server admin page
+- Can't copy invite links from server admin page.
+- Probably many many more things.
 
 ## Requirements
 
