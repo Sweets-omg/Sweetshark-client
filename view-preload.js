@@ -1,24 +1,27 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { ipcRenderer } = require('electron');
 
-// Inject screen sharing support: show a simple picker UI inside the BrowserView page,
-// then obtain a stream using the selected source id via getUserMedia with chromeMediaSourceId.
+// Intercept getDisplayMedia to show a custom source picker, then hand off to
+// Electron's setDisplayMediaRequestHandler (in main.js) which supplies the
+// correct source + audio mode.  Using getUserMedia with chromeMediaSource audio
+// crashes the renderer in modern Electron (Error 263), so we use the proper
+// getDisplayMedia → setDisplayMediaRequestHandler pipeline instead.
 window.addEventListener('DOMContentLoaded', () => {
   if (!navigator.mediaDevices) return;
-  const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia && navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
 
-  navigator.mediaDevices.getDisplayMedia = async function(constraints) {
+  const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+
+  navigator.mediaDevices.getDisplayMedia = async function (constraints) {
     try {
-      // Ask main process for sources
-      const sources = await ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', { types: ['window', 'screen'] });
+      const sources = await ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', {
+        types: ['window', 'screen']
+      });
+
       if (!sources || sources.length === 0) {
-        // fallback to original
-        if (originalGetDisplayMedia) return originalGetDisplayMedia(constraints);
-        throw new Error('No screen sources available');
+        return originalGetDisplayMedia(constraints);
       }
 
-      // Build simple picker overlay injected into the current page
+      // ── Build overlay ────────────────────────────────────────────────────────
       const overlayId = '__sharkord_screenshare_picker';
-      // Remove existing if any
       const existing = document.getElementById(overlayId);
       if (existing) existing.remove();
 
@@ -26,8 +29,8 @@ window.addEventListener('DOMContentLoaded', () => {
       overlay.id = overlayId;
       Object.assign(overlay.style, {
         position: 'fixed',
-        zIndex: 99999999,
-        inset: '0px',
+        zIndex: '99999999',
+        inset: '0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -40,7 +43,7 @@ window.addEventListener('DOMContentLoaded', () => {
       Object.assign(card.style, {
         width: '900px',
         maxWidth: '95%',
-        maxHeight: '85%',
+        maxHeight: '85vh',
         overflowY: 'auto',
         background: '#111',
         borderRadius: '8px',
@@ -49,15 +52,17 @@ window.addEventListener('DOMContentLoaded', () => {
         border: '1px solid rgba(255,255,255,0.06)'
       });
 
+      // ── Title ────────────────────────────────────────────────────────────────
       const title = document.createElement('div');
       title.textContent = 'Choose a screen or window to share';
       Object.assign(title.style, { fontSize: '18px', marginBottom: '12px' });
 
-      // ── Audio toggle ──────────────────────────────────────────────────────────
-      let shareAudio = false;
+      // ── Audio toggle ─────────────────────────────────────────────────────────
+      const AUDIO_PREF_KEY = '__sharkord_screenshare_audio';
+      let shareAudio = localStorage.getItem(AUDIO_PREF_KEY) === 'true';
 
-      const audioToggleRow = document.createElement('div');
-      Object.assign(audioToggleRow.style, {
+      const audioRow = document.createElement('div');
+      Object.assign(audioRow.style, {
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
@@ -66,10 +71,25 @@ window.addEventListener('DOMContentLoaded', () => {
         background: '#1a1a1a',
         borderRadius: '6px',
         border: '1px solid rgba(255,255,255,0.07)',
+        cursor: 'pointer',
         userSelect: 'none'
       });
 
-      // Toggle switch track
+      const speakerIcon = document.createElement('div');
+      speakerIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+      </svg>`;
+      Object.assign(speakerIcon.style, {
+        display: 'flex',
+        alignItems: 'center',
+        color: '#888',
+        flexShrink: '0',
+        pointerEvents: 'none'
+      });
+
       const toggleTrack = document.createElement('div');
       Object.assign(toggleTrack.style, {
         position: 'relative',
@@ -77,12 +97,11 @@ window.addEventListener('DOMContentLoaded', () => {
         height: '22px',
         borderRadius: '11px',
         background: '#444',
-        cursor: 'pointer',
         flexShrink: '0',
-        transition: 'background 0.2s'
+        transition: 'background 0.2s',
+        pointerEvents: 'none'
       });
 
-      // Toggle switch thumb
       const toggleThumb = document.createElement('div');
       Object.assign(toggleThumb.style, {
         position: 'absolute',
@@ -92,53 +111,43 @@ window.addEventListener('DOMContentLoaded', () => {
         height: '16px',
         borderRadius: '50%',
         background: '#fff',
-        transition: 'left 0.2s',
-        pointerEvents: 'none'
+        transition: 'left 0.2s'
       });
       toggleTrack.appendChild(toggleThumb);
 
-      // Speaker icon (SVG)
-      const speakerIcon = document.createElement('div');
-      speakerIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-      </svg>`;
-      Object.assign(speakerIcon.style, { display: 'flex', alignItems: 'center', color: '#888', flexShrink: '0' });
-
       const audioLabel = document.createElement('div');
-      Object.assign(audioLabel.style, { fontSize: '14px', color: '#ccc', flexGrow: '1' });
+      Object.assign(audioLabel.style, {
+        fontSize: '14px',
+        color: '#ccc',
+        flexGrow: '1',
+        pointerEvents: 'none'
+      });
       audioLabel.textContent = 'Share system audio';
 
       const audioNote = document.createElement('div');
-      Object.assign(audioNote.style, { fontSize: '11px', color: '#555' });
+      Object.assign(audioNote.style, {
+        fontSize: '11px',
+        color: '#555',
+        pointerEvents: 'none'
+      });
       audioNote.textContent = 'Windows only';
 
-      function updateToggleVisuals() {
+      function updateToggle () {
         toggleTrack.style.background = shareAudio ? '#4e0073' : '#444';
-        toggleThumb.style.left = shareAudio ? '21px' : '3px';
-        speakerIcon.style.color = shareAudio ? '#4e0073' : '#888';
-        audioLabel.style.color = shareAudio ? '#fff' : '#ccc';
+        toggleThumb.style.left      = shareAudio ? '21px'    : '3px';
+        speakerIcon.style.color     = shareAudio ? '#4e0073' : '#888';
+        audioLabel.style.color      = shareAudio ? '#fff'    : '#ccc';
       }
 
-      toggleTrack.onclick = () => {
-        shareAudio = !shareAudio;
-        updateToggleVisuals();
-      };
-      // Clicking the whole row also toggles
-      audioToggleRow.onclick = (e) => {
-        if (e.target === audioToggleRow || e.target === audioLabel || e.target === audioNote) {
-          shareAudio = !shareAudio;
-          updateToggleVisuals();
-        }
-      };
+      audioRow.onclick = () => { shareAudio = !shareAudio; localStorage.setItem(AUDIO_PREF_KEY, shareAudio); updateToggle(); };
 
-      audioToggleRow.appendChild(speakerIcon);
-      audioToggleRow.appendChild(toggleTrack);
-      audioToggleRow.appendChild(audioLabel);
-      audioToggleRow.appendChild(audioNote);
-      // ─────────────────────────────────────────────────────────────────────────
+      audioRow.appendChild(speakerIcon);
+      audioRow.appendChild(toggleTrack);
+      audioRow.appendChild(audioLabel);
+      audioRow.appendChild(audioNote);
+      updateToggle(); // reflect persisted state on first render
 
+      // ── Source grid ──────────────────────────────────────────────────────────
       const grid = document.createElement('div');
       Object.assign(grid.style, {
         display: 'grid',
@@ -146,60 +155,38 @@ window.addEventListener('DOMContentLoaded', () => {
         gap: '12px'
       });
 
-      // Create items and store screenshot interval references
-      let screenshotIntervals = [];
       let pickerClosed = false;
-      let lastScreenshots = new Map(); // Store references to clear old data
+      const thumbIntervals = [];
+      const lastThumbs = new Map();
 
-      // Function to capture and update screenshots
-      async function updateScreenshots() {
+      async function refreshThumbnails () {
         if (pickerClosed) return;
-        
         try {
-          const updatedSources = await ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', { 
+          const updated = await ipcRenderer.invoke('DESKTOP_CAPTURER_GET_SOURCES', {
             types: ['window', 'screen']
           });
-          
-          // Clear old screenshots from memory before updating
-          lastScreenshots.clear();
-          
-          // Update thumbnails
-          updatedSources.forEach((src, index) => {
-            const item = grid.children[index];
-            if (item) {
-              const thumb = item.querySelector('div');
-              if (thumb && src.thumbnail) {
-                // Clear old image data
-                thumb.style.backgroundImage = '';
-                // Set new image
-                thumb.style.backgroundImage = `url(${src.thumbnail})`;
-                // Store reference
-                lastScreenshots.set(src.id, src.thumbnail);
-              }
+          lastThumbs.clear();
+          updated.forEach((src, i) => {
+            const item = grid.children[i];
+            if (!item) return;
+            const thumb = item.querySelector('.src-thumb');
+            if (thumb && src.thumbnail) {
+              thumb.style.backgroundImage = '';
+              thumb.style.backgroundImage = `url(${src.thumbnail})`;
+              lastThumbs.set(src.id, src.thumbnail);
             }
           });
-        } catch (error) {
-          console.error('Failed to update screenshots:', error);
-        }
+        } catch (e) { /* ignore */ }
       }
 
-      // Function to clean up screenshot intervals and data
-      function cleanupScreenshots() {
+      function cleanupPicker () {
         pickerClosed = true;
-        screenshotIntervals.forEach(interval => clearInterval(interval));
-        screenshotIntervals = [];
-        
-        // Clear all screenshot data from memory
-        lastScreenshots.clear();
-        
-        // Clear background images from DOM elements
-        const thumbs = grid.querySelectorAll('div[style*="background-image"]');
-        thumbs.forEach(thumb => {
-          thumb.style.backgroundImage = '';
-        });
+        thumbIntervals.forEach(clearInterval);
+        thumbIntervals.length = 0;
+        lastThumbs.clear();
+        grid.querySelectorAll('.src-thumb').forEach(t => { t.style.backgroundImage = ''; });
       }
 
-      // Use thumbnails if provided (source.thumbnail is a NativeImage in main, sent as dataURL)
       for (const src of sources) {
         const item = document.createElement('button');
         item.type = 'button';
@@ -217,92 +204,37 @@ window.addEventListener('DOMContentLoaded', () => {
         });
 
         const thumb = document.createElement('div');
-        thumb.style.height = '120px';
-        thumb.style.marginBottom = '8px';
-        thumb.style.background = '#333';
-        thumb.style.borderRadius = '4px';
-        thumb.style.backgroundSize = 'cover';
-        thumb.style.backgroundPosition = 'center';
-
-        if (src.thumbnail && typeof src.thumbnail === 'string') {
-          thumb.style.backgroundImage = `url(${src.thumbnail})`;
-        }
+        thumb.className = 'src-thumb';
+        Object.assign(thumb.style, {
+          height: '120px',
+          marginBottom: '8px',
+          background: '#333',
+          borderRadius: '4px',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        });
+        if (src.thumbnail) thumb.style.backgroundImage = `url(${src.thumbnail})`;
 
         const name = document.createElement('div');
-        name.textContent = src.name || src.title || ('Source ' + src.id);
-        name.style.fontSize = '13px';
-        name.style.whiteSpace = 'nowrap';
-        name.style.overflow = 'hidden';
-        name.style.textOverflow = 'ellipsis';
+        name.textContent = src.name || src.title || `Source ${src.id}`;
+        Object.assign(name.style, {
+          fontSize: '13px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        });
 
         item.appendChild(thumb);
         item.appendChild(name);
-
-        item.onclick = async (e) => {
-          e.preventDefault();
-          const captureAudio = shareAudio; // snapshot toggle state at click time
-          cleanupScreenshots();
-          // remove overlay
-          overlay.remove();
-          // Request stream for chosen source using chromeMediaSourceId constraint.
-          // When captureAudio is true, also request desktop audio via chromeMediaSource:'desktop'.
-          // This only captures system audio on Windows; on macOS/Linux the audio track will
-          // either be silent or getUserMedia will ignore the audio constraint gracefully.
-          try {
-            const audioConstraint = captureAudio
-              ? { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: src.id } }
-              : false;
-
-            const stream = await navigator.mediaDevices.getUserMedia({
-              audio: audioConstraint,
-              video: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: src.id,
-                  maxWidth: window.screen.width,
-                  maxHeight: window.screen.height
-                }
-              }
-            });
-            return stream;
-          } catch (err) {
-            console.error('getUserMedia for desktop failed', err);
-            // If audio capture failed (e.g. unsupported platform), retry without audio
-            if (captureAudio) {
-              console.warn('Screenshare audio capture failed, retrying without audio:', err);
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                  audio: false,
-                  video: {
-                    mandatory: {
-                      chromeMediaSource: 'desktop',
-                      chromeMediaSourceId: src.id,
-                      maxWidth: window.screen.width,
-                      maxHeight: window.screen.height
-                    }
-                  }
-                });
-                return stream;
-              } catch (retryErr) {
-                console.error('getUserMedia retry without audio also failed', retryErr);
-              }
-            }
-            // Fallback to original getDisplayMedia if available
-            if (originalGetDisplayMedia) return originalGetDisplayMedia(constraints);
-            throw err;
-          }
-        };
-
         grid.appendChild(item);
       }
 
-      // Start screenshot update interval (every 5 seconds)
-      const interval = setInterval(updateScreenshots, 5000);
-      screenshotIntervals.push(interval);
+      thumbIntervals.push(setInterval(refreshThumbnails, 5000));
 
-      const cancel = document.createElement('button');
-      cancel.textContent = 'Cancel';
-      Object.assign(cancel.style, {
+      // ── Cancel button ────────────────────────────────────────────────────────
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      Object.assign(cancelBtn.style, {
         marginTop: '12px',
         padding: '8px 12px',
         background: '#333',
@@ -311,52 +243,84 @@ window.addEventListener('DOMContentLoaded', () => {
         borderRadius: '6px',
         cursor: 'pointer'
       });
-      cancel.onclick = () => { 
-        cleanupScreenshots();
-        overlay.remove(); 
-      };
 
       card.appendChild(title);
-      card.appendChild(audioToggleRow);
+      card.appendChild(audioRow);
       card.appendChild(grid);
-      card.appendChild(cancel);
+      card.appendChild(cancelBtn);
       overlay.appendChild(card);
       document.documentElement.appendChild(overlay);
 
-      // Return a Promise that resolves when the user picks an item.
+      // ── Promise that resolves when user picks a source ───────────────────────
       return new Promise((resolve, reject) => {
-        // We will monkey-patch each item's onclick to resolve the promise with the stream.
-        // But since the onclick above returns stream, we need to intercept when a stream is created.
-        // A simple approach: wrap navigator.mediaDevices.getUserMedia to catch the next call with chromeMediaSourceId.
-        const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-        navigator.mediaDevices.getUserMedia = async function(constraints) {
-          // restore original
-          navigator.mediaDevices.getUserMedia = originalGetUserMedia;
-          try {
-            const s = await originalGetUserMedia(constraints);
-            resolve(s);
-            return s;
-          } catch (err) {
-            reject(err);
-            throw err;
-          }
+
+        // Attach click handlers to each source button now that we have resolve/reject
+        Array.from(grid.children).forEach((item, i) => {
+          const src = sources[i];
+          item.onclick = async () => {
+            const captureAudio = shareAudio;
+            const isScreen = src.id.startsWith('screen:');
+            cleanupPicker();
+            overlay.remove();
+
+            try {
+              // Tell main process which source + audio mode to use.
+              // setDisplayMediaRequestHandler in main.js reads this and
+              // supplies the correct DesktopCapturerSource + loopback audio.
+              await ipcRenderer.invoke('SCREENSHARE_SET_PENDING', {
+                sourceId: src.id,
+                shareAudio: captureAudio,
+                isScreen
+              });
+
+              // Call the real getDisplayMedia — Electron's handler takes over.
+              // Pass audio:true when the user toggled it on so the browser
+              // signals that an audio track is wanted.
+              const stream = await originalGetDisplayMedia({
+                video: true,
+                audio: captureAudio
+              });
+
+              resolve(stream);
+            } catch (err) {
+              // If audio capture failed, retry video-only so screenshare still works.
+              if (captureAudio) {
+                try {
+                  await ipcRenderer.invoke('SCREENSHARE_SET_PENDING', {
+                    sourceId: src.id,
+                    shareAudio: false,
+                    isScreen
+                  });
+                  const stream = await originalGetDisplayMedia({ video: true, audio: false });
+                  resolve(stream);
+                } catch (retryErr) {
+                  reject(retryErr);
+                }
+              } else {
+                reject(err);
+              }
+            }
+          };
+        });
+
+        cancelBtn.onclick = () => {
+          cleanupPicker();
+          overlay.remove();
+          reject(new DOMException('The user cancelled the screen-sharing request.', 'AbortError'));
         };
-        
-        // Clean up if overlay is removed externally
-        const observer = new MutationObserver((mutations) => {
+
+        // Clean up if the overlay is removed externally
+        const mo = new MutationObserver(() => {
           if (!document.contains(overlay)) {
-            cleanupScreenshots();
-            observer.disconnect();
+            cleanupPicker();
+            mo.disconnect();
           }
         });
-        observer.observe(document.documentElement, { childList: true, subtree: true });
+        mo.observe(document.documentElement, { childList: true, subtree: true });
       });
-    } catch (error) {
-      console.error('Screen sharing error in preload picker:', error);
-      if (originalGetDisplayMedia) {
-        return originalGetDisplayMedia(constraints);
-      }
-      throw error;
+
+    } catch (err) {
+      return originalGetDisplayMedia(constraints);
     }
   };
 });

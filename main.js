@@ -8,6 +8,11 @@ let mainWindow;
 let currentView = null;
 let serverViews = new Map();
 
+// Holds the source chosen in the picker, keyed by session.
+// Populated by SCREENSHARE_SET_PENDING IPC from view-preload.js and consumed
+// by setDisplayMediaRequestHandler to supply the correct source + audio mode.
+const sessionPendingScreenshare = new Map(); // session -> { sourceId, shareAudio, isScreen }
+
 // Create icons directory if it doesn't exist
 const iconsDir = path.join(app.getPath('userData'), 'server-icons');
 if (!fs.existsSync(iconsDir)) {
@@ -97,6 +102,51 @@ function buildPermissionHandlers(ses) {
       return getPermissions().screenCapture;
     });
   }
+
+  // Handle getDisplayMedia requests from the BrowserView.
+  // view-preload.js shows the custom picker, stores the chosen source via
+  // SCREENSHARE_SET_PENDING IPC, then calls the real getDisplayMedia which
+  // triggers this handler. We look up the pending config and respond with the
+  // correct source + loopback audio (Windows only).
+  ses.setDisplayMediaRequestHandler(async (request, callback) => {
+    const pending = sessionPendingScreenshare.get(ses);
+
+    if (!pending) {
+      // No pending source means the user cancelled or the picker wasn't used — deny.
+      callback(undefined);
+      return;
+    }
+
+    sessionPendingScreenshare.delete(ses);
+    const { sourceId, shareAudio, isScreen } = pending;
+
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['window', 'screen'],
+        thumbnailSize: { width: 0, height: 0 } // no thumbnails needed here
+      });
+      const source = sources.find(s => s.id === sourceId);
+
+      if (!source) {
+        callback(undefined);
+        return;
+      }
+
+      if (shareAudio) {
+        // 'loopback' captures all system audio via WASAPI loopback on Windows.
+        // For screen sources this is all system audio (minus Sharkord's outgoing
+        // mic, which isn't routed through the speaker pipeline). For window sources
+        // Electron has no per-window audio API, so loopback is the best available.
+        // On macOS/Linux loopback is silently ignored and only video is captured.
+        callback({ video: source, audio: 'loopback' });
+      } else {
+        callback({ video: source });
+      }
+    } catch (err) {
+      console.error('setDisplayMediaRequestHandler error:', err);
+      callback(undefined);
+    }
+  });
 }
 
 function createServerView(server) {
@@ -453,6 +503,14 @@ ipcMain.handle('DESKTOP_CAPTURER_GET_SOURCES', async (event, opts) => {
     thumbnailSize: { width: 300, height: 200 }
   });
   return sources.map(s => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL() }));
+});
+
+// Called by view-preload.js when the user picks a source in the custom picker.
+// Stores the choice so setDisplayMediaRequestHandler (above) can use it when
+// the subsequent real getDisplayMedia call arrives from the renderer.
+ipcMain.handle('SCREENSHARE_SET_PENDING', (event, config) => {
+  sessionPendingScreenshare.set(event.sender.session, config);
+  return true;
 });
 
 // ── Permission IPC ────────────────────────────────────────────────────────────
