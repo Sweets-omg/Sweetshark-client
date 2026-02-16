@@ -23,6 +23,7 @@
 ## Current know issues
 
 - Can't copy invite links from server admin page.
+- Streaming with audio is broken and can't be fixed.
 - Probably many many more things.
 
 ## Requirements
