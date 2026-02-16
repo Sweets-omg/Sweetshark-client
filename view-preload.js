@@ -51,7 +51,93 @@ window.addEventListener('DOMContentLoaded', () => {
 
       const title = document.createElement('div');
       title.textContent = 'Choose a screen or window to share';
-      Object.assign(title.style, { fontSize: '18px', marginBottom: '8px' });
+      Object.assign(title.style, { fontSize: '18px', marginBottom: '12px' });
+
+      // ── Audio toggle ──────────────────────────────────────────────────────────
+      let shareAudio = false;
+
+      const audioToggleRow = document.createElement('div');
+      Object.assign(audioToggleRow.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        marginBottom: '14px',
+        padding: '10px 12px',
+        background: '#1a1a1a',
+        borderRadius: '6px',
+        border: '1px solid rgba(255,255,255,0.07)',
+        userSelect: 'none'
+      });
+
+      // Toggle switch track
+      const toggleTrack = document.createElement('div');
+      Object.assign(toggleTrack.style, {
+        position: 'relative',
+        width: '40px',
+        height: '22px',
+        borderRadius: '11px',
+        background: '#444',
+        cursor: 'pointer',
+        flexShrink: '0',
+        transition: 'background 0.2s'
+      });
+
+      // Toggle switch thumb
+      const toggleThumb = document.createElement('div');
+      Object.assign(toggleThumb.style, {
+        position: 'absolute',
+        top: '3px',
+        left: '3px',
+        width: '16px',
+        height: '16px',
+        borderRadius: '50%',
+        background: '#fff',
+        transition: 'left 0.2s',
+        pointerEvents: 'none'
+      });
+      toggleTrack.appendChild(toggleThumb);
+
+      // Speaker icon (SVG)
+      const speakerIcon = document.createElement('div');
+      speakerIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+      </svg>`;
+      Object.assign(speakerIcon.style, { display: 'flex', alignItems: 'center', color: '#888', flexShrink: '0' });
+
+      const audioLabel = document.createElement('div');
+      Object.assign(audioLabel.style, { fontSize: '14px', color: '#ccc', flexGrow: '1' });
+      audioLabel.textContent = 'Share system audio';
+
+      const audioNote = document.createElement('div');
+      Object.assign(audioNote.style, { fontSize: '11px', color: '#555' });
+      audioNote.textContent = 'Windows only';
+
+      function updateToggleVisuals() {
+        toggleTrack.style.background = shareAudio ? '#4e0073' : '#444';
+        toggleThumb.style.left = shareAudio ? '21px' : '3px';
+        speakerIcon.style.color = shareAudio ? '#4e0073' : '#888';
+        audioLabel.style.color = shareAudio ? '#fff' : '#ccc';
+      }
+
+      toggleTrack.onclick = () => {
+        shareAudio = !shareAudio;
+        updateToggleVisuals();
+      };
+      // Clicking the whole row also toggles
+      audioToggleRow.onclick = (e) => {
+        if (e.target === audioToggleRow || e.target === audioLabel || e.target === audioNote) {
+          shareAudio = !shareAudio;
+          updateToggleVisuals();
+        }
+      };
+
+      audioToggleRow.appendChild(speakerIcon);
+      audioToggleRow.appendChild(toggleTrack);
+      audioToggleRow.appendChild(audioLabel);
+      audioToggleRow.appendChild(audioNote);
+      // ─────────────────────────────────────────────────────────────────────────
 
       const grid = document.createElement('div');
       Object.assign(grid.style, {
@@ -154,13 +240,21 @@ window.addEventListener('DOMContentLoaded', () => {
 
         item.onclick = async (e) => {
           e.preventDefault();
+          const captureAudio = shareAudio; // snapshot toggle state at click time
           cleanupScreenshots();
           // remove overlay
           overlay.remove();
-          // Request stream for chosen source using chromeMediaSourceId constraint
+          // Request stream for chosen source using chromeMediaSourceId constraint.
+          // When captureAudio is true, also request desktop audio via chromeMediaSource:'desktop'.
+          // This only captures system audio on Windows; on macOS/Linux the audio track will
+          // either be silent or getUserMedia will ignore the audio constraint gracefully.
           try {
+            const audioConstraint = captureAudio
+              ? { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: src.id } }
+              : false;
+
             const stream = await navigator.mediaDevices.getUserMedia({
-              audio: false,
+              audio: audioConstraint,
               video: {
                 mandatory: {
                   chromeMediaSource: 'desktop',
@@ -173,6 +267,26 @@ window.addEventListener('DOMContentLoaded', () => {
             return stream;
           } catch (err) {
             console.error('getUserMedia for desktop failed', err);
+            // If audio capture failed (e.g. unsupported platform), retry without audio
+            if (captureAudio) {
+              console.warn('Screenshare audio capture failed, retrying without audio:', err);
+              try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                  audio: false,
+                  video: {
+                    mandatory: {
+                      chromeMediaSource: 'desktop',
+                      chromeMediaSourceId: src.id,
+                      maxWidth: window.screen.width,
+                      maxHeight: window.screen.height
+                    }
+                  }
+                });
+                return stream;
+              } catch (retryErr) {
+                console.error('getUserMedia retry without audio also failed', retryErr);
+              }
+            }
             // Fallback to original getDisplayMedia if available
             if (originalGetDisplayMedia) return originalGetDisplayMedia(constraints);
             throw err;
@@ -203,6 +317,7 @@ window.addEventListener('DOMContentLoaded', () => {
       };
 
       card.appendChild(title);
+      card.appendChild(audioToggleRow);
       card.appendChild(grid);
       card.appendChild(cancel);
       overlay.appendChild(card);
