@@ -1,6 +1,6 @@
 {
   "name": "sweetshark-client",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Multi-server Sharkord client vibe-coded by Sweets",
   "main": "main.js",
   "scripts": {

@@ -477,6 +477,7 @@ ipcMain.on('show-view', () => {
       const sidebarWidth = 72;
       const b = mainWindow.getContentBounds();
       currentView.setBounds({ x: sidebarWidth, y: 0, width: b.width - sidebarWidth, height: b.height });
+      currentView.webContents.focus();
     } catch (e) { console.error(e); }
   }
 });
