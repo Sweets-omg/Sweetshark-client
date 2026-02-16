@@ -525,10 +525,73 @@ ipcMain.on('set-permissions', (event, permissions) => {
   store.set('permissionsConfigured', true);
 });
 
+// ── Update check ──────────────────────────────────────────────────────────────
+
+const GITHUB_RELEASES_API = 'https://api.github.com/repos/Sweets-omg/Sweetshark-client/releases/latest';
+
+function compareSemver(a, b) {
+  // Returns true if b is newer than a
+  const parse = v => v.replace(/^v\.?/, '').split('.').map(Number);
+  const [aMaj, aMin, aPatch] = parse(a);
+  const [bMaj, bMin, bPatch] = parse(b);
+  if (bMaj !== aMaj) return bMaj > aMaj;
+  if (bMin !== aMin) return bMin > aMin;
+  return bPatch > aPatch;
+}
+
+function checkForUpdates() {
+  if (store.get('checkUpdates', true) === false) return;
+
+  const https = require('https');
+  const req = https.get(
+    GITHUB_RELEASES_API,
+    { headers: { 'User-Agent': 'Sweetshark-Client-Updater' } },
+    (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const release = JSON.parse(data);
+          const latestTag = release.tag_name;
+          const releaseUrl = release.html_url;
+          if (!latestTag || !releaseUrl) return;
+
+          const current = app.getVersion();
+          if (compareSemver(current, latestTag)) {
+            // Wait for the window to finish loading before sending the event
+            if (mainWindow && mainWindow.webContents) {
+              mainWindow.webContents.once('did-finish-load', () => {
+                mainWindow.webContents.send('update-available', { version: latestTag, url: releaseUrl });
+              });
+              // If already loaded, send immediately
+              if (!mainWindow.webContents.isLoading()) {
+                mainWindow.webContents.send('update-available', { version: latestTag, url: releaseUrl });
+              }
+            }
+          }
+        } catch (_) { /* ignore parse errors */ }
+      });
+    }
+  );
+  req.on('error', () => { /* ignore network errors */ });
+  req.end();
+}
+
+ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.on('open-release-url', (_, url) => {
+  require('electron').shell.openExternal(url);
+});
+
+ipcMain.on('disable-update-check', () => {
+  store.set('checkUpdates', false);
+});
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   createWindow();
+  checkForUpdates();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

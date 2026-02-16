@@ -35,4 +35,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPermissions:  ()           => ipcRenderer.invoke('get-permissions'),
   setPermissions:  (perms)      => ipcRenderer.send('set-permissions', perms),
   onShowPermissionsSetup: (cb)  => ipcRenderer.on('show-permissions-setup', () => cb()),
+
+  // Updates
+  onUpdateAvailable:   (cb)  => ipcRenderer.on('update-available', (_, info) => cb(info)),
+  openReleaseUrl:      (url) => ipcRenderer.send('open-release-url', url),
+  disableUpdateCheck:  ()    => ipcRenderer.send('disable-update-check'),
+  getAppVersion:       ()    => ipcRenderer.invoke('get-app-version'),
 });

@@ -189,6 +189,47 @@
     </div>
   </div>
 
+  <!-- Update Available Modal -->
+  <div class="modal" id="updateModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Update Available</h2>
+      </div>
+      <div class="modal-body">
+        <p style="color:#b9bbbe; font-size:14px; line-height:1.6;">
+          A new version of Sweetshark Client is available: <strong id="updateVersion" style="color:#fff;"></strong>
+          <br>
+          You are currently on: <strong id="currentVersion" style="color:#fff;"></strong>
+          <br><br>
+          Would you like to download it?
+        </p>
+      </div>
+      <div class="modal-footer" style="flex-direction:column; gap:8px; align-items:stretch;">
+        <button class="primary-button" id="updateYesBtn">Yes, take me there</button>
+        <button class="secondary-button" id="updateNoBtn">No, remind me next launch</button>
+        <button class="secondary-button" id="updateNeverBtn" style="color:#a05555; border-color:#5a3a3a;">No, never ask again</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Never Ask Again Confirmation Modal -->
+  <div class="modal" id="updateNeverConfirm">
+    <div class="modal-content" style="width:360px;">
+      <div class="modal-header">
+        <h2>Are you sure?</h2>
+      </div>
+      <div class="modal-body">
+        <p style="color:#b9bbbe; font-size:14px; line-height:1.6;">
+          You will never be notified about updates again.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary-button" id="updateNeverConfirmNo">Go back</button>
+        <button class="secondary-button" id="updateNeverConfirmYes" style="color:#a05555; border-color:#5a3a3a;">Yes, never notify me</button>
+      </div>
+    </div>
+  </div>
+
   <script src="script.js"></script>
 </body>
 </html>

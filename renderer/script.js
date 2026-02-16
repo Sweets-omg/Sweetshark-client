@@ -88,6 +88,36 @@ function setupEventListeners() {
     window.electronAPI.toggleKeepLoaded(id);
   });
 
+  // Update check
+  window.electronAPI.onUpdateAvailable(async (info) => {
+    document.getElementById('updateVersion').textContent = info.version;
+    const current = await window.electronAPI.getAppVersion();
+    document.getElementById('currentVersion').textContent = `v${current}`;
+    window.electronAPI.hideView();
+    document.getElementById('updateYesBtn').onclick = () => {
+      window.electronAPI.openReleaseUrl(info.url);
+      document.getElementById('updateModal').classList.remove('active');
+      window.electronAPI.showView();
+    };
+    document.getElementById('updateNoBtn').onclick = () => {
+      document.getElementById('updateModal').classList.remove('active');
+      window.electronAPI.showView();
+    };
+    document.getElementById('updateNeverBtn').onclick = () => {
+      document.getElementById('updateNeverConfirm').classList.add('active');
+    };
+    document.getElementById('updateNeverConfirmYes').onclick = () => {
+      window.electronAPI.disableUpdateCheck();
+      document.getElementById('updateNeverConfirm').classList.remove('active');
+      document.getElementById('updateModal').classList.remove('active');
+      window.electronAPI.showView();
+    };
+    document.getElementById('updateNeverConfirmNo').onclick = () => {
+      document.getElementById('updateNeverConfirm').classList.remove('active');
+    };
+    document.getElementById('updateModal').classList.add('active');
+  });
+
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
