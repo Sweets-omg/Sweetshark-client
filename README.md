@@ -23,7 +23,7 @@
 ## Current know issues
 
 - Can't copy invite links from server admin page.
-- Streaming with audio is broken and can't be fixed.
+- Streaming with audio is broken and can't be fixed in electron with the skills and tools I have available to me.
 - Probably many many more things.
 
 ## Requirements
