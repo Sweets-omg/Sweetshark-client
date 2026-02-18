@@ -68,6 +68,10 @@ The built files will be in the `dist` folder:
 - **NSIS Installer**: `dist/Sweetshark Client Setup X.X.X.exe`
 - **Portable**: `dist/Sweetshark Client X.X.X.exe`
 
+### Building for other platforms
+
+Check package.json for commands
+
 ## Usage
 
 ### First Launch
