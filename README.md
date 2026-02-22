@@ -24,7 +24,6 @@
 
 - Can't copy invite links from server admin page.
 - Streaming with audio is broken and can't be fixed in electron with the skills and tools I have available to me.
-- The reply system added in sharkord v0.0.5, does not open in my client
 - Probably many many more things.
 
 ## Requirements
