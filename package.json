@@ -5,11 +5,13 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win",
-    "build:win-portable": "electron-builder --win portable",
+    "build:sidecar": "cd sidecar && cargo build --release",
+    "build:sidecar:check": "cd sidecar && cargo check",
+    "build:win": "npm run build:sidecar && electron-builder --win",
+    "build:win-portable": "npm run build:sidecar && electron-builder --win portable",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
-    "build:all": "electron-builder -mwl"
+    "build:all": "npm run build:sidecar && electron-builder -mwl"
   },
   "build": {
     "appId": "com.sweetshark.client",
@@ -20,6 +22,13 @@
       "view-preload.js",
       "renderer/**/*",
       "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "sidecar/target/release/sweetshark-capture.exe",
+        "to": "sidecar/sweetshark-capture.exe",
+        "filter": ["**/*"]
+      }
     ],
     "win": {
       "target": [
