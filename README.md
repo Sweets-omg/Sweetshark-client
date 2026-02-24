@@ -16,7 +16,7 @@
 - 🔄 **Drag-and-Drop Reordering** - Easily reorder your servers by dragging them in the sidebar
 - 🎯 **Server Management** - Right-click servers to rename, change icons, refresh, or remove them
 - 🔧 **Keep Loaded Option** - Toggle whether servers stay loaded in memory when inactive
-- 📺 **Screen Sharing** - Built-in screen capture with a custom picker for sharing your screen or windows
+- 📺 **Screen Sharing** - Built-in screen capture with a custom picker for sharing your screen or windows and per window audio support
 - 🔒 **Permission Control** - Configure app-wide permissions for notifications, screen capture, microphone, and camera
 - 💾 **Persistent Storage** - All your servers and settings are saved automatically
 
