@@ -23,7 +23,6 @@
 ## Current know issues
 
 - Can't copy invite links from server admin page.
-- Streaming with audio is broken and can't be fixed in electron with the skills and tools I have available to me.
 - Probably many many more things.
 
 ## Requirements
@@ -41,13 +40,20 @@
    git clone https://github.com/yourusername/sweetshark-client.git
    cd sweetshark-client
    ```
+   
+2. **Install Rust sidecar**
+   ```bash
+   cd sidecar
+   cargo build --release
+   cd ..
+   ```
 
-2. **Install dependencies**
+3. **Install dependencies**
    ```bash
    npm install
    ```
 
-3. **Run in development mode**
+4. **Run in development mode**
    ```bash
    npm start
    ```
@@ -123,14 +129,6 @@ Server data and settings are stored in:
 - `server-icons/` - Custom server icons
 - Server list and configurations
 
-## Technical Details
-
-### Built With
-
-- **Electron** v28.0.0 - Desktop application framework
-- **electron-store** - Persistent data storage
-- **electron-builder** - Application packaging
-
 ## Troubleshooting
 
 ### Server won't load
@@ -146,30 +144,12 @@ Server data and settings are stored in:
 - Supported formats: PNG, JPG, JPEG, GIF, WEBP
 - Try using a smaller image file
 
-## Development
-
-### Prerequisites for Development
-
-```bash
-npm install
-```
-
-### Development Mode
-
-```bash
-npm start
-```
-
-This will launch the app in development mode with hot reload.
-
 ### Project Dependencies
 
-**Production:**
-- electron-store ^8.1.0
-
-**Development:**
-- electron ^28.0.0
-- electron-builder ^24.9.1
+- Rust
+- electron-store
+- electron
+- electron-builder
 
 ## License
 
@@ -179,6 +159,6 @@ This project is provided as-is with no warranty or license. Use at your own risk
 
 ## Credits
 
-- Built with [Electron](https://www.electronjs.org/)
+- Built with [Electron](https://www.electronjs.org/) & [Rust](https://rust-lang.org/)
 - Created for [Sharkord](https://github.com/Sharkord/sharkord) - A lightweight, self-hosted real-time communication platform
-- Vibe-coded by Sweets-omg with AI.
+- Vibe-coded by Sweets-omg with Claude AI.
